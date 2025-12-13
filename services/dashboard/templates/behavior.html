@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+
+{% block title %}Behavior analytics  Academoscope{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
+    <div class="d-flex align-items-center gap-2">
+      <a href="/" class="btn btn-sm acad-back-btn" aria-label="Назад">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span class="visually-hidden">Назад</span>
+      </a>
+      <h1 class="mb-0" data-i18n-key="behavior.title">
+        Поведенческая аналитика
+      </h1>
+    </div>
+  </div>
+
+  <p class="text-muted small mb-3 js-period-label">Показатели {{ period_label }}.</p>
+
+  {% if lessons_all %}
+    <section class="mb-4" data-aos="fade-up">
+      <h2 class="h5 mb-3" data-i18n-key="behavior.popular_title">
+        Топ-уроков по популярности
+      </h2>
+      <div class="table-responsive acad-table-scroll">
+        <table class="table table-striped align-middle">
+          <thead>
+            <tr>
+              <th data-i18n-key="behavior.table.course">Курс</th>
+              <th data-i18n-key="behavior.table.lesson">Урок</th>
+              <th class="text-center" data-i18n-key="behavior.table.started">Начали</th>
+              <th class="text-center" data-i18n-key="behavior.table.completed">Завершили</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for l in popular_lessons %}
+              {% if loop.index0 < 50 %}
+                <tr>
+                  <td>{{ l.course_title }}</td>
+                  <td>{{ l.lesson_title }}</td>
+                  <td class="text-center">{{ l.started_students }}</td>
+                  <td class="text-center">{{ l.completed_students }}</td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="mb-4" data-aos="fade-up" data-aos-delay="60">
+      <h2 class="h5 mb-3" data-i18n-key="behavior.difficult_title">
+        Топ-уроков по сложности (отток)
+      </h2>
+      <div class="table-responsive acad-table-scroll">
+        <table class="table table-striped align-middle">
+          <thead>
+            <tr>
+              <th data-i18n-key="behavior.table.course">Курс</th>
+              <th data-i18n-key="behavior.table.lesson">Урок</th>
+              <th class="text-center" data-i18n-key="behavior.table.started">Начали</th>
+              <th class="text-center" data-i18n-key="behavior.table.completed">Завершили</th>
+              <th class="text-center" data-i18n-key="behavior.table.dropoff">Отток</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for l in difficult_lessons %}
+              {% if loop.index0 < 50 %}
+                <tr>
+                  <td>{{ l.course_title }}</td>
+                  <td>{{ l.lesson_title }}</td>
+                  <td class="text-center">{{ l.started_students }}</td>
+                  <td class="text-center">{{ l.completed_students }}</td>
+                  <td class="text-center">{{ l.drop_off_rate }}%</td>
+                </tr>
+              {% endif %}
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="mb-4" data-aos="fade-up" data-aos-delay="120">
+      <h2 class="h5 mb-3" data-i18n-key="behavior.progress_title">
+        Распределение прогресса по курсам
+      </h2>
+      <div class="table-responsive acad-table-scroll">
+        <table class="table table-striped align-middle">
+          <thead>
+            <tr>
+              <th data-i18n-key="behavior.table.progress_band">Диапазон прогресса</th>
+              <th class="text-center" data-i18n-key="behavior.table.courses_count">Курсов</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td data-i18n-key="behavior.progress_bucket_0_25_label">0–25% завершения</td>
+              <td class="text-center">{{ progress_distribution["0_25"] }}</td>
+            </tr>
+            <tr>
+              <td data-i18n-key="behavior.progress_bucket_25_50_label">25–50% завершения</td>
+              <td class="text-center">{{ progress_distribution["25_50"] }}</td>
+            </tr>
+            <tr>
+              <td data-i18n-key="behavior.progress_bucket_50_75_label">50–75% завершения</td>
+              <td class="text-center">{{ progress_distribution["50_75"] }}</td>
+            </tr>
+            <tr>
+              <td data-i18n-key="behavior.progress_bucket_75_100_label">75–100% завершения</td>
+              <td class="text-center">{{ progress_distribution["75_100"] }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% else %}
+    <p data-i18n-key="behavior.empty">
+      Пока недостаточно данных для поведенческой аналитики.
+    </p>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+{% endblock %}

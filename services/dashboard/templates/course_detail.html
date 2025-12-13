@@ -1,0 +1,363 @@
+{% extends "base.html" %}
+
+{% block title %}{{ course.title }} — Academoscope{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
+    <div class="d-flex align-items-center gap-2 mb-2 mb-md-0">
+      <a href="/" class="btn btn-sm acad-back-btn" aria-label="Назад">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span class="visually-hidden">Назад</span>
+      </a>
+      <h1 class="mb-0">{{ course.title }}</h1>
+    </div>
+    <div class="d-flex align-items-center gap-2 mt-2 mt-md-0">
+      <span
+        class="text-muted small d-none d-sm-inline"
+        data-i18n-key="course.period_label"
+      >
+        Период:
+      </span>
+      <div class="btn-group btn-group-sm" role="group">
+        <a
+          href="/courses/{{ course.id }}?period=all"
+          class="btn btn-outline-secondary {% if period == 'all' %}active{% endif %}"
+          data-period-toggle
+          data-scope="course"
+          data-course-id="{{ course.id }}"
+          data-period="all"
+          data-i18n-key="period.all"
+        >
+          Всё время
+        </a>
+        <a
+          href="/courses/{{ course.id }}?period=7d"
+          class="btn btn-outline-secondary {% if period == '7d' %}active{% endif %}"
+          data-period-toggle
+          data-scope="course"
+          data-course-id="{{ course.id }}"
+          data-period="7d"
+          data-i18n-key="period.7d"
+        >
+          7 дней
+        </a>
+        <a
+          href="/courses/{{ course.id }}?period=30d"
+          class="btn btn-outline-secondary {% if period == '30d' %}active{% endif %}"
+          data-period-toggle
+          data-scope="course"
+          data-course-id="{{ course.id }}"
+          data-period="30d"
+          data-i18n-key="period.30d"
+        >
+          30 дней
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <p class="text-muted small mb-3 js-period-label">Показатели {{ period_label }}.</p>
+
+  <div class="row mb-4" data-aos="fade-up">
+    <div class="col-md-4 mb-3">
+      <div class="card metric-card">
+        <div class="card-body text-center">
+          <h6
+            class="card-subtitle mb-2 text-muted"
+            data-i18n-key="course.metric.total_students"
+          >
+            Студентов всего
+          </h6>
+          <h3
+            class="card-title mb-0"
+            data-countup-target="{{ metrics.total_students if metrics else 0 }}"
+            data-role="course-total-students"
+          >
+            {{ metrics.total_students if metrics else 0 }}
+          </h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4 mb-3">
+      <div class="card metric-card">
+        <div class="card-body text-center">
+          <h6
+            class="card-subtitle mb-2 text-muted"
+            data-i18n-key="course.metric.completed_students"
+          >
+            Завершили курс
+          </h6>
+          <h3
+            class="card-title mb-0"
+            data-countup-target="{{ metrics.completed_students if metrics else 0 }}"
+            data-role="course-completed-students"
+          >
+            {{ metrics.completed_students if metrics else 0 }}
+          </h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4 mb-3">
+      <div class="card metric-card">
+        <div class="card-body text-center">
+          <h6
+            class="card-subtitle mb-2 text-muted"
+            data-i18n-key="course.metric.completion_rate"
+          >
+            Процент завершения курса
+          </h6>
+          <h3
+            class="card-title mb-0"
+            data-countup-target="{{ metrics.completion_rate if metrics else 0 }}"
+            data-countup-suffix="%"
+            data-role="course-completion-rate"
+          >
+            {{ metrics.completion_rate if metrics else 0 }}%
+          </h3>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if lessons %}
+    <div class="mb-4" data-aos="fade-up" data-aos-delay="50">
+      <div class="card metric-card">
+        <div class="card-body">
+          <h2
+            class="h5 mb-3"
+            data-i18n-key="course.chart.dropoff_title"
+          >
+            График удержания по урокам
+          </h2>
+          <canvas id="dropoffChart" height="120"></canvas>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  <h2 class="mb-3" data-i18n-key="course.table.title">Удержание по урокам</h2>
+
+  {% if lessons %}
+    <div class="table-responsive acad-table-scroll" data-aos="fade-up" data-aos-delay="100">
+      <table class="table table-striped align-middle">
+        <thead>
+          <tr>
+            <th data-i18n-key="course.table.column_lesson">Урок</th>
+            <th class="text-center" data-i18n-key="course.table.column_started">Начали</th>
+            <th class="text-center" data-i18n-key="course.table.column_completed">Завершили</th>
+            <th class="text-center" data-i18n-key="course.table.column_dropoff">Отток</th>
+          </tr>
+        </thead>
+        <tbody class="js-lessons-tbody">
+          {% for lesson in lessons %}
+            <tr>
+              <td>{{ lesson.title }}</td>
+              <td class="text-center">{{ lesson.started_students }}</td>
+              <td class="text-center">{{ lesson.completed_students }}</td>
+              <td class="text-center">{{ lesson.drop_off_rate }}%</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p data-i18n-key="course.empty_lessons">
+      Ещё нет событий по урокам этого курса.
+    </p>
+  {% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script data-page-script="course">
+    function getDropoffAxisColor(theme) {
+      const isDark = theme === "dark";
+      return isDark ? "#e5e7eb" : "#4b5563";
+    }
+
+    function getDropoffBarColor(theme) {
+      const isDark = theme === "dark";
+      return isDark ? "rgba(248, 113, 113, 0.85)" : "rgba(220, 53, 69, 0.7)";
+    }
+
+    function getDropoffGridColor(theme) {
+      const isDark = theme === "dark";
+      return isDark ? "rgba(148, 163, 184, 0.35)" : "rgba(148, 163, 184, 0.25)";
+    }
+
+    (function initDropoffChart() {
+      const canvas = document.getElementById("dropoffChart");
+      if (!window.Chart || !canvas) return;
+
+      const ctx = canvas.getContext("2d");
+      const labels = {{ lesson_labels | tojson }};
+      const data = {{ drop_off_values | tojson }};
+      const initialTheme = document.body.classList.contains("theme-dark")
+        ? "dark"
+        : "light";
+
+      window.dropoffChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: "Drop-off, %",
+              data: data,
+              backgroundColor: getDropoffBarColor(initialTheme),
+              borderRadius: 4,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              display: false,
+            },
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 100,
+              ticks: {
+                color: getDropoffAxisColor(initialTheme),
+                callback: (value) => value + "%",
+              },
+              grid: {
+                color: getDropoffGridColor(initialTheme),
+                borderColor: getDropoffGridColor(initialTheme),
+              },
+            },
+            x: {
+              ticks: {
+                color: getDropoffAxisColor(initialTheme),
+              },
+              grid: {
+                color: getDropoffGridColor(initialTheme),
+                borderColor: getDropoffGridColor(initialTheme),
+              },
+            },
+          },
+        },
+      });
+    })();
+
+    window.addEventListener("acad-theme-changed", (event) => {
+      const theme = (event.detail && event.detail.theme) || "light";
+      const axisColor = getDropoffAxisColor(theme);
+      if (window.dropoffChart) {
+        window.dropoffChart.data.datasets[0].backgroundColor =
+          getDropoffBarColor(theme);
+        if (window.dropoffChart.options.scales?.y?.ticks) {
+          window.dropoffChart.options.scales.y.ticks.color = axisColor;
+        }
+        if (window.dropoffChart.options.scales?.x?.ticks) {
+          window.dropoffChart.options.scales.x.ticks.color = axisColor;
+        }
+        const gridColor = getDropoffGridColor(theme);
+        if (window.dropoffChart.options.scales?.y?.grid) {
+          window.dropoffChart.options.scales.y.grid.color = gridColor;
+          window.dropoffChart.options.scales.y.grid.borderColor = gridColor;
+        }
+        if (window.dropoffChart.options.scales?.x?.grid) {
+          window.dropoffChart.options.scales.x.grid.color = gridColor;
+          window.dropoffChart.options.scales.x.grid.borderColor = gridColor;
+        }
+        window.dropoffChart.update();
+      }
+    });
+
+    window.updateCourseFromPeriodResponse = function (data) {
+      const metrics = data.metrics || {};
+      const lessons = data.lessons || [];
+
+      const totalEl = document.querySelector(
+        "[data-role='course-total-students']",
+      );
+      const completedEl = document.querySelector(
+        "[data-role='course-completed-students']",
+      );
+      const rateEl = document.querySelector(
+        "[data-role='course-completion-rate']",
+      );
+
+      if (totalEl)
+        totalEl.textContent = (metrics.total_students || 0).toLocaleString(
+          "ru-RU",
+        );
+      if (completedEl)
+        completedEl.textContent = (
+          metrics.completed_students || 0
+        ).toLocaleString("ru-RU");
+      if (rateEl) rateEl.textContent = (metrics.completion_rate || 0) + "%";
+
+      if (window.acadSetCurrentPeriod) {
+        window.acadSetCurrentPeriod(data.period || "all");
+      }
+
+      const tbody = document.querySelector(".js-lessons-tbody");
+      if (tbody) {
+        tbody.innerHTML = "";
+        lessons.forEach((lesson) => {
+          const row = document.createElement("tr");
+          row.innerHTML = `
+              <td>${lesson.title}</td>
+              <td class="text-center">${lesson.started_students}</td>
+              <td class="text-center">${lesson.completed_students}</td>
+              <td class="text-center">${lesson.drop_off_rate}%</td>
+            `;
+          tbody.appendChild(row);
+        });
+      }
+
+      if (window.dropoffChart && data.chart) {
+        window.dropoffChart.data.labels = data.chart.lesson_labels || [];
+        window.dropoffChart.data.datasets[0].data =
+          data.chart.drop_off_values || [];
+        window.dropoffChart.update();
+      }
+    };
+
+    if (!window.__acadCoursePeriodHandlerAttached) {
+      window.__acadCoursePeriodHandlerAttached = true;
+
+      document.addEventListener("click", function (event) {
+        const target = event.target.closest(
+          "[data-period-toggle][data-scope='course']",
+        );
+        if (!target) return;
+        event.preventDefault();
+
+        const period = target.getAttribute("data-period") || "all";
+        const courseId = target.getAttribute("data-course-id");
+        if (!courseId) return;
+
+        const params = new URLSearchParams({ period, format: "json" });
+
+        fetch(`/courses/${courseId}?` + params.toString(), {
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+        })
+          .then((resp) => resp.json())
+          .then((data) => {
+            document
+              .querySelectorAll("[data-period-toggle][data-scope='course']")
+              .forEach((btn) => {
+                btn.classList.toggle(
+                  "active",
+                  btn.getAttribute("data-period") === period,
+                );
+              });
+
+            if (window.updateCourseFromPeriodResponse) {
+              window.updateCourseFromPeriodResponse(data);
+            }
+          })
+          .catch((err) => {
+            console.error("Failed to load course period data", err);
+          });
+      });
+    }
+  </script>
+{% endblock %}

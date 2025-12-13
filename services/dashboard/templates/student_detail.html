@@ -1,0 +1,428 @@
+{% extends "base.html" %}
+
+{% block title %}{{ student_display_name }} — Academoscope{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
+    <div class="d-flex align-items-center gap-2 mb-2 mb-md-0">
+      <a href="/students" class="btn btn-sm acad-back-btn" aria-label="Назад">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span class="visually-hidden">Назад</span>
+      </a>
+      <div>
+        <h1 class="mb-1">{{ student_display_name }}</h1>
+        <div class="text-muted small">
+          ID: {{ student.id }}
+          {% if student.email %}
+            · {{ student.email }}
+          {% endif %}
+        </div>
+      </div>
+    </div>
+    <div class="text-end">
+      <span
+        class="badge bg-{{ status_badge_color }} mb-1"
+        data-i18n-key="student.status.{{ status_code }}"
+      >
+        {{ status_label }}
+      </span>
+      <div
+        class="small text-muted"
+        data-i18n-key="course.period_label"
+      >
+        Период:
+      </div>
+    </div>
+  </div>
+
+  <p class="text-muted small mb-3 js-period-label">Показатели {{ period_label }}.</p>
+
+  <div class="row mb-4" data-aos="fade-up">
+    <div class="col-12 col-md-4 mb-3">
+      <div class="card metric-card h-100">
+        <div class="card-body">
+          <h6
+            class="card-subtitle mb-2 text-muted text-uppercase small"
+            data-i18n-key="student.metric.registration_date"
+          >
+            Дата регистрации
+          </h6>
+          <h3 class="card-title mb-0">
+            {% if first_seen_at %}
+              {{ first_seen_at }}
+            {% else %}
+              —
+            {% endif %}
+          </h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-4 mb-3">
+      <div class="card metric-card h-100">
+        <div class="card-body">
+          <h6
+            class="card-subtitle mb-2 text-muted text-uppercase small"
+            data-i18n-key="student.metric.last_visit"
+          >
+            Последний визит
+          </h6>
+          <h3 class="card-title mb-0">
+            {% if last_seen_at %}
+              {{ last_seen_at }}
+            {% else %}
+              —
+            {% endif %}
+          </h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-4 mb-3">
+      <div class="card metric-card h-100">
+        <div class="card-body">
+          <h6
+            class="card-subtitle mb-2 text-muted text-uppercase small"
+            data-i18n-key="student.metric.overall_progress"
+          >
+            Общий прогресс по курсам
+          </h6>
+          <h3
+            class="card-title mb-2"
+            data-countup-target="{{ overall_progress }}"
+            data-countup-suffix="%"
+          >
+            {{ overall_progress }}%
+          </h3>
+          <div class="progress" style="height: 0.75rem;">
+            <div
+              class="progress-bar {{ 'bg-success' if overall_progress >= 80 else ('bg-warning' if overall_progress >= 50 else 'bg-danger') }}"
+              role="progressbar"
+              style="width: {{ overall_progress }}%;"
+              aria-valuenow="{{ overall_progress }}"
+              aria-valuemin="0"
+              aria-valuemax="100"
+            ></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="mb-4" data-aos="fade-up" data-aos-delay="80">
+    <h2
+      class="h5 mb-3"
+      data-i18n-key="student.section.courses"
+    >
+      Курсы и детальная активность
+    </h2>
+    {% if courses %}
+      <div class="row g-3">
+        {% for item in courses %}
+          {% set course = item.course %}
+          <div class="col-12 col-lg-6">
+            <div class="card metric-card h-100">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                  <h3 class="h6 mb-0">
+                    <a href="/courses/{{ course.id }}">{{ course.title }}</a>
+                  </h3>
+                  {% if item.progress >= 100 %}
+                    <span class="badge bg-success">Завершён</span>
+                  {% elif item.progress > 0 %}
+                    <span class="badge bg-primary">В процессе</span>
+                  {% else %}
+                    <span class="badge bg-secondary">Не начат</span>
+                  {% endif %}
+                </div>
+                <div class="mb-2">
+                  <div class="d-flex justify-content-between align-items-center small mb-1">
+                    <span data-i18n-key="student.courses.progress_label">Прогресс</span>
+                    <span>{{ item.progress }}%</span>
+                  </div>
+                  <div class="progress" style="height: 0.6rem;">
+                    <div
+                      class="progress-bar {{ 'bg-success' if item.progress >= 80 else ('bg-warning' if item.progress >= 50 else 'bg-danger') }}"
+                      role="progressbar"
+                      style="width: {{ item.progress }}%;"
+                      aria-valuenow="{{ item.progress }}"
+                      aria-valuemin="0"
+                      aria-valuemax="100"
+                    ></div>
+                  </div>
+                </div>
+                <ul class="small text-muted mb-0 list-unstyled">
+                  <li>
+                    Уроки: {{ item.completed_lessons }}/{{ item.total_lessons }} завершено,
+                    {{ item.started_lessons }} начали.
+                  </li>
+                  <li>
+                    <span data-i18n-key="student.courses.last_visit_label">Последний визит:</span>
+                    {% if item.last_visit_str %}
+                      {{ item.last_visit_str }}
+                    {% else %}
+                      —
+                    {% endif %}
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p
+        class="text-muted small mb-0"
+        data-i18n-key="student.courses.empty"
+      >
+        Пока нет данных по курсам этого студента.
+      </p>
+    {% endif %}
+  </section>
+
+  <section class="mb-4" data-aos="fade-up" data-aos-delay="120">
+    <h2
+      class="h5 mb-3"
+      data-i18n-key="student.section.activity_timeline"
+    >
+      Временная шкала активности
+    </h2>
+    {% if activity_timeline %}
+      <div class="card metric-card mb-3">
+        <div class="card-body">
+          <canvas id="studentActivityChart" height="120"></canvas>
+        </div>
+      </div>
+    {% else %}
+      <p
+        class="text-muted small mb-0"
+        data-i18n-key="student.section.activity_timeline_empty"
+      >
+        Пока нет событий, чтобы построить временную шкалу.
+      </p>
+    {% endif %}
+  </section>
+
+  <section class="mb-4" data-aos="fade-up" data-aos-delay="160">
+    <h2
+      class="h5 mb-3"
+      data-i18n-key="student.section.insights_title"
+    >
+      Инсайты и теги Academoscope
+    </h2>
+    <div class="row g-3">
+      <div class="col-12 col-lg-6">
+        <div class="card metric-card h-100">
+          <div class="card-body">
+            <h3
+              class="h6 mb-2"
+              data-i18n-key="student.section.auto_tags_title"
+            >
+              Автоматические метки
+            </h3>
+            {% if auto_tags %}
+              <ul class="small mb-0">
+                {% for tag in auto_tags %}
+                  <li>{{ tag }}</li>
+                {% endfor %}
+              </ul>
+            {% else %}
+              <p
+                class="small text-muted mb-0"
+                data-i18n-key="student.section.auto_tags_empty"
+              >
+                Пока нет достаточных данных для формирования меток.
+              </p>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="card metric-card h-100" id="student-ai-card" data-ai-enabled="{{ 'true' if ai_enabled else 'false' }}">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h3 class="h6 mb-0">Прогноз от Academoscope</h3>
+              {% if ai_enabled %}
+                <span class="badge bg-success">AI</span>
+              {% else %}
+                <span class="badge bg-secondary">Отключено</span>
+              {% endif %}
+            </div>
+            <div id="student-ai-content">
+              <p class="small text-muted mb-0">
+                Здесь появится AI-оценка вероятности завершения курсов и ожидаемой
+                успеваемости конкретного студента.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="card metric-card h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h3 class="h6 mb-0">Сравнение с когортой</h3>
+              <span class="badge bg-warning text-dark">Скоро</span>
+            </div>
+            <p class="small text-muted mb-0">
+              В будущем здесь появится сравнение скорости прохождения и результатов
+              с типичными студентами данного курса.
+            </p>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-lg-6">
+        <div class="card metric-card h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h3 class="h6 mb-0">История коммуникаций и действия</h3>
+              <span class="badge bg-warning text-dark">Скоро</span>
+            </div>
+            <p class="small text-muted mb-2">
+              Здесь будут отображаться все сообщения и уведомления, отправленные
+              этому студенту, а также быстрые действия (написать email, добавить в
+              сегмент, выдать сертификат).
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script data-page-script="student">
+    (function () {
+      const canvas = document.getElementById("studentActivityChart");
+      const timelineData = {{ activity_timeline|tojson }};
+      const studentAiContext = {{ student_ai_context|tojson }};
+      if (!canvas || !window.Chart || !Array.isArray(timelineData) || !timelineData.length) {
+        // продолжаем выполнение, чтобы инициализировать AI-блок, даже если нет графика
+      } else {
+        const ctx = canvas.getContext("2d");
+        const labels = timelineData.map(function (item) { return item.date; });
+        const values = timelineData.map(function (item) { return item.events_count; });
+
+        function getTheme() {
+          return document.body.classList.contains("theme-dark") ? "dark" : "light";
+        }
+
+        function getAxisColor(theme) {
+          return theme === "dark" ? "#e5e7eb" : "#4b5563";
+        }
+
+        function getGridColor(theme) {
+          return theme === "dark" ? "rgba(148, 163, 184, 0.35)" : "rgba(148, 163, 184, 0.25)";
+        }
+
+        function getLineColor(theme) {
+          return theme === "dark" ? "rgba(56, 189, 248, 0.9)" : "rgba(24, 188, 156, 0.9)";
+        }
+
+        function createOrUpdateChart() {
+          const theme = getTheme();
+          const axisColor = getAxisColor(theme);
+          const gridColor = getGridColor(theme);
+          const lineColor = getLineColor(theme);
+
+          if (window.studentActivityChart && typeof window.studentActivityChart.destroy === "function") {
+            window.studentActivityChart.destroy();
+          }
+
+          window.studentActivityChart = new Chart(ctx, {
+            type: "line",
+            data: {
+              labels: labels,
+              datasets: [
+                {
+                  data: values,
+                  borderColor: lineColor,
+                  backgroundColor: "rgba(24, 188, 156, 0.15)",
+                  tension: 0.3,
+                  pointRadius: 2,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              plugins: {
+                legend: { display: false },
+              },
+              scales: {
+                x: {
+                  ticks: { color: axisColor },
+                  grid: { color: gridColor, borderColor: gridColor },
+                },
+                y: {
+                  beginAtZero: true,
+                  ticks: { color: axisColor, precision: 0 },
+                  grid: { color: gridColor, borderColor: gridColor },
+                },
+              },
+            },
+          });
+        }
+
+        createOrUpdateChart();
+
+        if (!window.__acadStudentThemeHandlerAttached) {
+          window.__acadStudentThemeHandlerAttached = true;
+          window.addEventListener("acad-theme-changed", function () {
+            if (!window.studentActivityChart) {
+              return;
+            }
+            createOrUpdateChart();
+          });
+        }
+      }
+      (function initStudentAi() {
+        const card = document.getElementById("student-ai-card");
+        if (!card) return;
+
+        const enabledAttr = card.getAttribute("data-ai-enabled");
+        if (enabledAttr !== "true") return;
+
+        const container = document.getElementById("student-ai-content");
+        if (!container || !studentAiContext) return;
+
+        const originalHtml = container.innerHTML;
+        container.innerHTML = `
+          <div class="d-flex align-items-center justify-content-center py-2">
+            <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+            <span class="small text-muted">Загружаем прогноз для этого студента...</span>
+          </div>
+        `;
+
+        fetch("/api/student-ai-insights", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Requested-With": "XMLHttpRequest",
+          },
+          body: JSON.stringify(studentAiContext),
+        })
+          .then(function (resp) { return resp.json(); })
+          .then(function (data) {
+            if (!data || !Array.isArray(data.items) || !data.items.length) {
+              container.innerHTML = originalHtml;
+              return;
+            }
+
+            const list = document.createElement("ul");
+            list.className = "small mb-0 text-muted";
+            data.items.forEach(function (item) {
+              const li = document.createElement("li");
+              li.textContent = item;
+              list.appendChild(li);
+            });
+            container.innerHTML = "";
+            container.appendChild(list);
+          })
+          .catch(function () {
+            container.innerHTML = originalHtml;
+          });
+      })();
+    })();
+  </script>
+{% endblock %}

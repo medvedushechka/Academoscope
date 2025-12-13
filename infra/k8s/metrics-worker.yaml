@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: metrics-worker
+  namespace: academoscope
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: metrics-worker
+  template:
+    metadata:
+      labels:
+        app: metrics-worker
+    spec:
+      containers:
+        - name: metrics-worker
+          image: academoscope-metrics-worker:latest
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: DATABASE_URL
+              value: postgresql+psycopg2://academoscope:academoscope@postgres:5432/academoscope
+            - name: METRICS_INTERVAL_SECONDS
+              value: "60"

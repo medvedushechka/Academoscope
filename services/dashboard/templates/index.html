@@ -1,0 +1,1027 @@
+{% extends "base.html" %}
+
+{% block title %}Курсы — Academoscope{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+    <h1 class="mb-0" data-i18n-key="index.title">Курсы</h1>
+    <div class="d-flex align-items-center gap-2 mt-2 mt-md-0">
+      <span
+        class="text-muted small d-none d-sm-inline"
+        data-i18n-key="common.period"
+      >
+        Период:
+      </span>
+      <div class="btn-group btn-group-sm" role="group">
+        <a
+          href="/?period=all"
+          class="btn btn-outline-secondary {% if period == 'all' %}active{% endif %}"
+          data-period-toggle
+          data-scope="index"
+          data-period="all"
+          data-i18n-key="period.all"
+        >
+          Всё время
+        </a>
+        <a
+          href="/?period=7d"
+          class="btn btn-outline-secondary {% if period == '7d' %}active{% endif %}"
+          data-period-toggle
+          data-scope="index"
+          data-period="7d"
+          data-i18n-key="period.7d"
+        >
+          7 дней
+        </a>
+        <a
+          href="/?period=30d"
+          class="btn btn-outline-secondary {% if period == '30d' %}active{% endif %}"
+          data-period-toggle
+          data-scope="index"
+          data-period="30d"
+          data-i18n-key="period.30d"
+        >
+          30 дней
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex justify-content-end mb-3">
+    <div class="btn-group btn-group-sm" role="group">
+      <button
+        type="button"
+        class="btn btn-outline-secondary disabled"
+        data-i18n-key="index.export.csv"
+      >
+        Экспорт в CSV
+      </button>
+      <button
+        type="button"
+        class="btn btn-outline-secondary disabled"
+        data-i18n-key="index.export.pdf"
+      >
+        Экспорт в PDF
+      </button>
+    </div>
+  </div>
+
+  <p class="text-muted small mb-3 js-period-label">Показатели {{ period_label }}.</p>
+
+  {% if courses %}
+    <div class="row mb-4" data-aos="fade-up">
+      <div class="col-12 col-md-6 col-xl-3 mb-3">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <h6
+              class="card-subtitle mb-2 text-muted text-uppercase small"
+              data-i18n-key="index.metric.reach"
+            >
+              Общий охват
+            </h6>
+            <h3
+              class="card-title mb-1"
+              data-countup-target="{{ reach_total_students }}"
+              data-role="reach-total"
+            >
+              {{ reach_total_students }}
+            </h3>
+            <div class="text-muted small">
+              <span data-i18n-key="index.metric.reach_active_prefix">
+                Активных за 30 дней:
+              </span>
+              <span data-role="reach-active">{{ reach_active_students_30d }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3 mb-3">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <h6
+              class="card-subtitle mb-2 text-muted text-uppercase small"
+              data-i18n-key="index.metric.courses"
+            >
+              Курсов
+            </h6>
+            <h3
+              class="card-title mb-0"
+              data-countup-target="{{ courses_count }}"
+              data-role="courses-count"
+            >
+              {{ courses_count }}
+            </h3>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3 mb-3">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <h6
+              class="card-subtitle mb-2 text-muted text-uppercase small"
+              data-i18n-key="index.metric.total_students"
+            >
+              Студентов всего
+            </h6>
+            <h3
+              class="card-title mb-1"
+              data-countup-target="{{ total_students_all }}"
+              data-role="total-students"
+            >
+              <i class="fa-solid fa-users me-2 text-primary"></i>{{ total_students_all }}
+            </h3>
+            <div class="text-muted small">
+              <span data-i18n-key="index.metric.completed_prefix">Завершили:</span>
+              <span data-role="completed-count">{{ completed_students_all }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3 mb-3">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <h6
+              class="card-subtitle mb-2 text-muted text-uppercase small"
+              data-i18n-key="index.metric.avg_completion"
+            >
+              Средний процент завершения по всем курсам
+            </h6>
+            <h3
+              class="card-title mb-2"
+              data-countup-target="{{ overall_completion_rate }}"
+              data-countup-suffix="%"
+              data-role="overall-completion-rate"
+            >
+              {{ overall_completion_rate }}%
+            </h3>
+            <div class="progress" style="height: 0.75rem;">
+              <div
+                class="progress-bar {{ 'bg-success' if overall_completion_rate >= 80 else ('bg-warning' if overall_completion_rate >= 50 else 'bg-danger') }}"
+                role="progressbar"
+                style="width: {{ overall_completion_rate }}%;"
+                aria-valuenow="{{ overall_completion_rate }}"
+                aria-valuemin="0"
+                aria-valuemax="100"
+              ></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3 mb-3">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <h6
+              class="card-subtitle mb-2 text-muted text-uppercase small"
+              data-i18n-key="index.metric.revenue"
+            >
+              Выручка (MRR / ARR)
+            </h6>
+            <h3 class="card-title mb-1">—</h3>
+            <div
+              class="text-muted small"
+              data-i18n-key="index.metric.revenue_hint"
+            >
+              Подключите биллинг, чтобы видеть выручку.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3 mb-3">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <h6
+              class="card-subtitle mb-2 text-muted text-uppercase small"
+              data-i18n-key="index.metric.churn"
+            >
+              Прогнозируемый отток
+            </h6>
+            <h3 class="card-title mb-1">—</h3>
+            <div
+              class="text-muted small"
+              data-i18n-key="index.metric.churn_hint"
+            >
+              Появится после подключения модуля прогнозной аналитики.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3 mb-3">
+        <a href="/students" class="text-decoration-none">
+          <div class="card metric-card h-100">
+            <div class="card-body text-center">
+              <h6
+                class="card-subtitle mb-2 text-muted text-uppercase small"
+                data-i18n-key="index.metric.students_list_title"
+              >
+                Карточки студентов
+              </h6>
+              <h3 class="card-title mb-1">
+                <i class="fa-solid fa-user-graduate me-2 text-primary"></i>
+                <span data-i18n-key="index.metric.students_list_cta">Открыть список</span>
+              </h3>
+              <div
+                class="text-muted small"
+                data-i18n-key="index.metric.students_list_hint"
+              >
+                Перейдите к полному списку студентов и их карточкам.
+              </div>
+            </div>
+          </div>
+        </a>
+      </div>
+    </div>
+
+    <div class="row mb-4">
+      <div class="col-lg-7 mb-3">
+        <div class="card metric-card h-100">
+          <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+              <h2
+                class="h6 mb-0"
+                data-i18n-key="index.chart.completion_title"
+              >
+                Процент завершения по курсам
+              </h2>
+              <span
+                class="badge bg-light text-dark"
+                data-i18n-key="index.chart.completion_badge_all"
+              >
+                по всем данным
+              </span>
+            </div>
+            <canvas id="completionChart" height="140"></canvas>
+          </div>
+        </div>
+      </div>
+      <div class="col-lg-5 mb-3">
+        <div class="card metric-card h-100">
+          <div class="card-body">
+            <h2
+              class="h6 mb-3"
+              data-i18n-key="index.chart.donut_title"
+            >
+              Завершённость студентов
+            </h2>
+            <div class="row align-items-center">
+              <div class="col-7">
+                <canvas id="studentsDonut" height="130"></canvas>
+              </div>
+              <div class="col-5">
+                <ul class="list-unstyled small mb-0">
+                  <li class="mb-1">
+                    <span class="badge me-2" style="background-color:#18bc9c;">&nbsp;</span>
+                    <span class="donut-legend-label" data-i18n-key="index.donut.legend.completed_label">
+                      Завершили:
+                    </span>
+                    <strong>{{ completed_students_all }}</strong>
+                  </li>
+                  <li>
+                    <span class="badge me-2" style="background-color:#e74c3c;">&nbsp;</span>
+                    <span class="donut-legend-label" data-i18n-key="index.donut.legend.not_completed_label">
+                      Не завершили:
+                    </span>
+                    <strong>{{ not_completed_students_all }}</strong>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-responsive acad-table-scroll" data-aos="fade-up" data-aos-delay="100">
+      <table class="table table-striped align-middle">
+        <thead>
+          <tr>
+            <th data-i18n-key="index.table.course">Курс</th>
+            <th class="text-center" data-i18n-key="index.table.students">Студентов</th>
+            <th class="text-center" data-i18n-key="index.table.completed">Завершили</th>
+            <th
+              class="text-center"
+              data-i18n-key="index.table.completion_rate"
+            >
+              Процент завершения
+            </th>
+          </tr>
+        </thead>
+        <tbody class="js-courses-tbody">
+          {% for course in courses %}
+            {% set rate = course.completion_rate %}
+            <tr>
+              <td>
+                <a href="/courses/{{ course.id }}?period={{ period|default('all') }}">{{ course.title }}</a>
+              </td>
+              <td class="text-center">{{ course.total_students }}</td>
+              <td class="text-center">{{ course.completed_students }}</td>
+              <td>
+                <div class="progress" style="height: 0.75rem;">
+                  <div
+                    class="progress-bar {{ 'bg-success' if rate >= 80 else ('bg-warning' if rate >= 50 else 'bg-danger') }}"
+                    role="progressbar"
+                    style="width: {{ rate }}%;"
+                    aria-valuenow="{{ rate }}"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                  >
+                    {{ rate }}%
+                  </div>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <section class="mb-4" data-aos="fade-up" data-aos-delay="120">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2 class="h5 mb-0" data-i18n-key="index.section.behavior_title">
+          Как учатся ваши студенты
+        </h2>
+        <a href="/behavior" class="btn btn-sm btn-outline-secondary">
+          <i class="fa-solid fa-arrow-up-right-from-square me-1"></i>
+          <span data-i18n-key="behavior.open_full">
+            Открыть развёрнутую аналитику
+          </span>
+        </a>
+      </div>
+      <div class="row g-3">
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card metric-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h3
+                  class="h6 mb-0"
+                  data-i18n-key="index.behavior.retention_map"
+                >
+                  Карта удержания по урокам
+                </h3>
+                <span
+                  class="badge bg-success"
+                  data-i18n-key="index.badge.available_now"
+                >
+                  Уже доступно
+                </span>
+              </div>
+              <p
+                class="mb-0 small text-muted"
+                data-i18n-key="index.behavior.retention_map_desc"
+              >
+                График и таблица отсева по урокам на странице курса.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card metric-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h3
+                  class="h6 mb-0"
+                  data-i18n-key="index.behavior.content_activity"
+                >
+                  Активность по типам контента
+                </h3>
+                <span
+                  class="badge bg-success"
+                  data-i18n-key="index.badge.available_now"
+                >
+                  Уже доступно
+                </span>
+              </div>
+              <p
+                class="mb-1 small text-muted"
+                data-i18n-key="index.behavior.content_activity_desc"
+              >
+                Покажет, какие форматы материалов вовлекают сильнее всего.
+              </p>
+              {% if behavior_popular_lessons %}
+                <ul class="mb-0 small text-muted">
+                  {% for l in behavior_popular_lessons %}
+                    <li>
+                      <strong>{{ l.course_title }}</strong> — {{ l.lesson_title }}
+                      ({{ l.started_students }})
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p
+                  class="mb-0 small text-muted"
+                  data-i18n-key="index.behavior.popular_lessons_empty"
+                >
+                  Пока недостаточно данных, чтобы показать популярные уроки.
+                </p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card metric-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h3
+                  class="h6 mb-0"
+                  data-i18n-key="index.behavior.time_distribution"
+                >
+                  Распределение времени прохождения
+                </h3>
+                <span
+                  class="badge bg-success"
+                  data-i18n-key="index.badge.available_now"
+                >
+                  Уже доступно
+                </span>
+              </div>
+              <p
+                class="mb-1 small text-muted"
+                data-i18n-key="index.behavior.time_distribution_desc"
+              >
+                Появится, когда начнётся сбор данных о длительности прохождения.
+              </p>
+              {% if courses_count %}
+                <ul class="mb-0 small text-muted">
+                  <li>
+                    <span
+                      data-i18n-key="index.behavior.progress_bucket_0_25_label"
+                    >
+                      0–25% завершения
+                    </span>
+                    — {{ progress_distribution["0_25"] }}
+                  </li>
+                  <li>
+                    <span
+                      data-i18n-key="index.behavior.progress_bucket_25_50_label"
+                    >
+                      25–50% завершения
+                    </span>
+                    — {{ progress_distribution["25_50"] }}
+                  </li>
+                  <li>
+                    <span
+                      data-i18n-key="index.behavior.progress_bucket_50_75_label"
+                    >
+                      50–75% завершения
+                    </span>
+                    — {{ progress_distribution["50_75"] }}
+                  </li>
+                  <li>
+                    <span
+                      data-i18n-key="index.behavior.progress_bucket_75_100_label"
+                    >
+                      75–100% завершения
+                    </span>
+                    — {{ progress_distribution["75_100"] }}
+                  </li>
+                </ul>
+              {% else %}
+                <p
+                  class="mb-0 small text-muted"
+                  data-i18n-key="index.behavior.progress_distribution_empty"
+                >
+                  Пока недостаточно данных для распределения прогресса по курсам.
+                </p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6 col-xl-3">
+          <div class="card metric-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h3
+                  class="h6 mb-0"
+                  data-i18n-key="index.behavior.top_rewatched"
+                >
+                  Топ-5 повторно просматриваемых уроков
+                </h3>
+                <span
+                  class="badge bg-success"
+                  data-i18n-key="index.badge.available_now"
+                >
+                  Уже доступно
+                </span>
+              </div>
+              <p
+                class="mb-1 small text-muted"
+                data-i18n-key="index.behavior.top_rewatched_desc"
+              >
+                Поможет увидеть сложные или особенно ценные уроки.
+              </p>
+              {% if behavior_difficult_lessons %}
+                <ul class="mb-0 small text-muted">
+                  {% for l in behavior_difficult_lessons %}
+                    <li>
+                      <strong>{{ l.course_title }}</strong> — {{ l.lesson_title }}
+                      ({{ l.drop_off_rate }}% отток)
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p
+                  class="mb-0 small text-muted"
+                  data-i18n-key="index.behavior.difficult_lessons_empty"
+                >
+                  Пока недостаточно данных, чтобы показать сложные уроки.
+                </p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="mb-4" data-aos="fade-up" data-aos-delay="140">
+      <h2 class="h5 mb-3" data-i18n-key="index.section.finance_title">
+        Финансовая и маркетинговая аналитика
+      </h2>
+      <div class="row g-3">
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card metric-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h3
+                  class="h6 mb-0"
+                  data-i18n-key="index.finance.channels"
+                >
+                  Эффективность каналов привлечения
+                </h3>
+                <span
+                  class="badge bg-warning text-dark"
+                  data-i18n-key="index.badge.soon"
+                >
+                  Скоро
+                </span>
+              </div>
+              <p
+                class="mb-0 small text-muted"
+                data-i18n-key="index.finance.channels_desc"
+              >
+                Здесь будет таблица с каналами, конверсией, % завершения и LTV.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card metric-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h3
+                  class="h6 mb-0"
+                  data-i18n-key="index.finance.sales_refunds"
+                >
+                  Динамика продаж и возвратов
+                </h3>
+                <span
+                  class="badge bg-warning text-dark"
+                  data-i18n-key="index.badge.soon"
+                >
+                  Скоро
+                </span>
+              </div>
+              <p
+                class="mb-0 small text-muted"
+                data-i18n-key="index.finance.sales_refunds_desc"
+              >
+                Линейный график продаж и возвратов по дням или неделям.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6 col-xl-4">
+          <div class="card metric-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h3
+                  class="h6 mb-0"
+                  data-i18n-key="index.finance.ltv"
+                >
+                  Средняя ценность студента (LTV)
+                </h3>
+                <span
+                  class="badge bg-warning text-dark"
+                  data-i18n-key="index.badge.soon"
+                >
+                  Скоро
+                </span>
+              </div>
+              <p
+                class="mb-0 small text-muted"
+                data-i18n-key="index.finance.ltv_desc"
+              >
+                Появится после подключения биллинга и данных о выручке.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section
+      id="ai-insights"
+      class="mb-4"
+      data-aos="fade-up"
+      data-aos-delay="160"
+    >
+      <h2 class="h5 mb-3" data-i18n-key="index.section.ai_title">
+        Academoscope AI Insights
+      </h2>
+      <div class="row g-3">
+        <div class="col-12 col-lg-6">
+          <div class="card metric-card h-100">
+            <div class="card-body" id="ai-recommendations-card" data-ai-enabled="{{ 'true' if ai_enabled else 'false' }}">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h3
+                  class="h6 mb-0"
+                  data-i18n-key="index.ai.risk_students"
+                >
+                  Студенты группы риска
+                </h3>
+                <span
+                  class="badge bg-secondary"
+                  data-i18n-key="index.badge.demo"
+                >
+                  Демо
+                </span>
+              </div>
+              <p
+                class="small text-muted mb-2"
+                data-i18n-key="index.ai.risk_students_desc"
+              >
+                Список студентов, которые с высокой вероятностью не завершат курс.
+              </p>
+              {% if risk_students %}
+                <ul class="small mb-0 text-muted">
+                  {% for s in risk_students %}
+                    <li>
+                      <a href="/students/{{ s.id }}">{{ s.display_name }}</a>
+                      {% if s.last_seen_at %}
+                        — последний визит {{ s.last_seen_at }}
+                      {% endif %}
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p
+                  class="small text-muted mb-0"
+                  data-i18n-key="index.ai.risk_students_empty"
+                >
+                  Пока нет студентов в группе риска по текущим данным.
+                </p>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+        <div class="col-12 col-lg-6">
+          <div class="card metric-card h-100">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <h3
+                  class="h6 mb-0"
+                  data-i18n-key="index.ai.recommendations"
+                >
+                  Рекомендации по улучшению курса
+                </h3>
+                <span
+                  class="badge bg-secondary"
+                  data-i18n-key="index.badge.demo"
+                >
+                  Демо
+                </span>
+              </div>
+              <p
+                class="small text-muted mb-2"
+                data-i18n-key="index.ai.recommendations_desc"
+              >
+                Автоматические инсайты на основе поведения студентов.
+              </p>
+              <div id="ai-recommendations-content">
+                {% if ai_recommendations %}
+                  <ul class="small mb-0 text-muted">
+                    {% for item in ai_recommendations %}
+                      <li>{{ item }}</li>
+                    {% endfor %}
+                  </ul>
+                {% else %}
+                  <ul class="small mb-0 text-muted">
+                    <li>
+                      Урок 7 имеет высокий отток. Рассмотрите разбиение на два урока.
+                    </li>
+                    <li>
+                      Студенты из канала "Подкаст X" завершают курс чаще других.
+                    </li>
+                  </ul>
+                {% endif %}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  {% else %}
+    <p data-i18n-key="index.empty">
+      Пока нет данных. Отправьте несколько тестовых событий через API Gateway.
+    </p>
+  {% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  {% if courses %}
+    <script data-page-script="index">
+      (function () {
+      function getAxisColor(theme) {
+        const isDark = theme === "dark";
+        return isDark ? "#e5e7eb" : "#4b5563";
+      }
+
+      function getBarColor(theme) {
+        const isDark = theme === "dark";
+        return isDark ? "rgba(59, 130, 246, 0.85)" : "rgba(24, 188, 156, 0.8)";
+      }
+
+      function getGridColor(theme) {
+        const isDark = theme === "dark";
+        return isDark ? "rgba(148, 163, 184, 0.35)" : "rgba(148, 163, 184, 0.25)";
+      }
+
+      const completionCtx = document.getElementById("completionChart");
+      if (completionCtx) {
+        // Уничтожаем предыдущий график, если он был, чтобы избежать ошибок Chart.js
+        if (window.completionChart && typeof window.completionChart.destroy === "function") {
+          window.completionChart.destroy();
+        }
+        const completionLabels = {{ course_titles | tojson }};
+        const completionData = {{ course_completion_rates | tojson }};
+        const initialTheme = document.body.classList.contains("theme-dark")
+          ? "dark"
+          : "light";
+
+        window.completionChart = new Chart(completionCtx, {
+          type: "bar",
+          data: {
+            labels: completionLabels,
+            datasets: [
+              {
+                label: "Completion rate, %",
+                data: completionData,
+                backgroundColor: getBarColor(initialTheme),
+                borderRadius: 4,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              legend: {
+                display: false,
+              },
+            },
+            scales: {
+              y: {
+                beginAtZero: true,
+                max: 100,
+                ticks: {
+                  color: getAxisColor(initialTheme),
+                  callback: (value) => value + "%",
+                },
+                grid: {
+                  color: getGridColor(initialTheme),
+                  borderColor: getGridColor(initialTheme),
+                },
+              },
+              x: {
+                ticks: {
+                  color: getAxisColor(initialTheme),
+                },
+                grid: {
+                  color: getGridColor(initialTheme),
+                  borderColor: getGridColor(initialTheme),
+                },
+              },
+            },
+          },
+        });
+      }
+
+      const donutCtx = document.getElementById("studentsDonut");
+      if (donutCtx) {
+        // Аналогично уничтожаем старый донат-график, если он уже создан
+        if (window.studentsDonut && typeof window.studentsDonut.destroy === "function") {
+          window.studentsDonut.destroy();
+        }
+        const completed = {{ completed_students_all | tojson }};
+        const notCompleted = {{ not_completed_students_all | tojson }};
+
+        const donutTheme = document.body.classList.contains("theme-dark")
+          ? "dark"
+          : "light";
+
+        window.studentsDonut = new Chart(donutCtx, {
+          type: "doughnut",
+          data: {
+            labels: ["Завершили", "Не завершили"],
+            datasets: [
+              {
+                data: [completed, notCompleted],
+                backgroundColor: ["#18bc9c", "#e74c3c"],
+              },
+            ],
+          },
+          options: {
+            cutout: "65%",
+            plugins: {
+              legend: {
+                display: false,
+              },
+            },
+          },
+        });
+      }
+
+      if (!window.__acadIndexThemeHandlerAttached) {
+        window.__acadIndexThemeHandlerAttached = true;
+        window.addEventListener("acad-theme-changed", (event) => {
+          const theme = (event.detail && event.detail.theme) || "light";
+          const axisColor = getAxisColor(theme);
+          const gridColor = getGridColor(theme);
+          if (window.completionChart) {
+            window.completionChart.data.datasets[0].backgroundColor = getBarColor(theme);
+            window.completionChart.options.scales.y.ticks.color = axisColor;
+            window.completionChart.options.scales.x.ticks.color = axisColor;
+            if (window.completionChart.options.scales?.y?.grid) {
+              window.completionChart.options.scales.y.grid.color = gridColor;
+              window.completionChart.options.scales.y.grid.borderColor = gridColor;
+            }
+            if (window.completionChart.options.scales?.x?.grid) {
+              window.completionChart.options.scales.x.grid.color = gridColor;
+              window.completionChart.options.scales.x.grid.borderColor = gridColor;
+            }
+            window.completionChart.update();
+          }
+        });
+      }
+
+      window.updateIndexFromPeriodResponse = function (data) {
+        const summary = data.summary;
+        const courses = data.courses || [];
+
+        const coursesCountEl = document.querySelector("[data-role='courses-count']");
+        const totalStudentsEl = document.querySelector("[data-role='total-students']");
+        const overallRateEl = document.querySelector(
+          "[data-role='overall-completion-rate']",
+        );
+        const completedCountEl = document.querySelector(
+          "[data-role='completed-count']",
+        );
+
+        if (coursesCountEl) coursesCountEl.textContent = summary.courses_count;
+        if (totalStudentsEl) totalStudentsEl.innerHTML =
+          '<i class="fa-solid fa-users me-2 text-primary"></i>' +
+          summary.total_students_all.toLocaleString("ru-RU");
+        if (overallRateEl)
+          overallRateEl.textContent = summary.overall_completion_rate + "%";
+        if (completedCountEl)
+          completedCountEl.textContent =
+            summary.completed_students_all.toLocaleString("ru-RU");
+
+        if (window.acadSetCurrentPeriod) {
+          window.acadSetCurrentPeriod(data.period || "all");
+        }
+
+        const tbody = document.querySelector(".js-courses-tbody");
+        if (tbody) {
+          tbody.innerHTML = "";
+          courses.forEach((course) => {
+            const rate = course.completion_rate || 0;
+            const colorClass =
+              rate >= 80 ? "bg-success" : rate >= 50 ? "bg-warning" : "bg-danger";
+            const periodParam = data.period || "all";
+            const row = document.createElement("tr");
+            row.innerHTML = `
+              <td><a href="/courses/${course.id}?period=${periodParam}">${course.title}</a></td>
+              <td class="text-center">${course.total_students}</td>
+              <td class="text-center">${course.completed_students}</td>
+              <td>
+                <div class="progress" style="height: 0.75rem;">
+                  <div
+                    class="progress-bar ${colorClass}"
+                    role="progressbar"
+                    style="width: ${rate}%;"
+                    aria-valuenow="${rate}"
+                    aria-valuemin="0"
+                    aria-valuemax="100"
+                  >
+                    ${rate}%
+                  </div>
+                </div>
+              </td>`;
+            tbody.appendChild(row);
+          });
+        }
+
+        if (window.completionChart && data.charts) {
+          window.completionChart.data.labels = data.charts.course_titles || [];
+          window.completionChart.data.datasets[0].data =
+            data.charts.course_completion_rates || [];
+          window.completionChart.update();
+        }
+
+        if (window.studentsDonut && summary) {
+          window.studentsDonut.data.datasets[0].data = [
+            summary.completed_students_all,
+            summary.not_completed_students_all,
+          ];
+          window.studentsDonut.update();
+        }
+      };
+
+      (function initAiRecommendations() {
+        const card = document.getElementById("ai-recommendations-card");
+        if (!card) return;
+
+        const enabled = card.getAttribute("data-ai-enabled") === "true";
+        if (!enabled) return;
+
+        const container = document.getElementById("ai-recommendations-content");
+        if (!container) return;
+
+        const originalHtml = container.innerHTML;
+
+        container.innerHTML = `
+          <div class="d-flex align-items-center justify-content-center py-3">
+            <div class="spinner-border text-primary spinner-border-sm me-2" role="status">
+              <span class="visually-hidden">Loading...</span>
+            </div>
+            <span class="small text-muted">Загружаем рекомендации от AI...</span>
+          </div>
+        `;
+
+        fetch("/api/ai-recommendations", {
+          headers: { "X-Requested-With": "XMLHttpRequest" },
+        })
+          .then((resp) => resp.json())
+          .then((data) => {
+            if (!data || !Array.isArray(data.items) || !data.items.length) {
+              container.innerHTML = originalHtml;
+              return;
+            }
+
+            const list = document.createElement("ul");
+            list.className = "small mb-0 text-muted";
+            data.items.forEach((item) => {
+              const li = document.createElement("li");
+              li.textContent = item;
+              list.appendChild(li);
+            });
+            container.innerHTML = "";
+            container.appendChild(list);
+          })
+          .catch(() => {
+            container.innerHTML = originalHtml;
+          });
+      })();
+      })();
+
+      if (!window.__acadIndexPeriodHandlerAttached) {
+        window.__acadIndexPeriodHandlerAttached = true;
+
+        document.addEventListener("click", function (event) {
+          const target = event.target.closest(
+            "[data-period-toggle][data-scope='index']",
+          );
+          if (!target) return;
+          event.preventDefault();
+
+          const period = target.getAttribute("data-period") || "all";
+
+          const params = new URLSearchParams({ period, format: "json" });
+
+          fetch("/?" + params.toString(), {
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+          })
+            .then((resp) => resp.json())
+            .then((data) => {
+              document
+                .querySelectorAll("[data-period-toggle][data-scope='index']")
+                .forEach((btn) => {
+                  btn.classList.toggle(
+                    "active",
+                    btn.getAttribute("data-period") === period,
+                  );
+                });
+
+              if (window.updateIndexFromPeriodResponse) {
+                window.updateIndexFromPeriodResponse(data);
+              }
+            })
+            .catch((err) => {
+              // В случае ошибки просто не ломаем страницу; можно добавить toast позже.
+              console.error("Failed to load period data", err);
+            });
+        });
+      }
+    </script>
+  {% endif %}
+{% endblock %}
