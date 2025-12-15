@@ -17,7 +17,7 @@ from flask import (
     request,
     url_for,
 )
-from sqlalchemy import distinct, func
+from sqlalchemy import case, distinct, func
 from sqlalchemy.orm import scoped_session, sessionmaker
 
 from common.db import Base, engine
@@ -368,6 +368,98 @@ def index():
         [c for c in courses if c["inactive_30d"]]
     )
 
+    # Демонстрационные, но более реалистичные данные для финансовых блоков
+    # Распределяем общее число студентов по каналам и считаем LTV/продажи на их основе.
+    channel_templates: list[tuple[str, float, float, int]] = [
+        ("Таргет ВК", 0.4, 3.2, 60),
+        ("YouTube и контент", 0.25, 1.8, 70),
+        ("Telegram / комьюнити", 0.2, 4.5, 75),
+        ("Партнёры и рекомендации", 0.15, 7.5, 82),
+    ]
+
+    total_students_for_finance = max(total_students_all, 0)
+    finance_channels: list[dict] = []
+
+    if total_students_for_finance > 0:
+        remaining_students = total_students_for_finance
+        for idx, (name, share, conversion_rate, completion_rate) in enumerate(
+            channel_templates
+        ):
+            if idx == len(channel_templates) - 1:
+                students = remaining_students
+            else:
+                students = int(total_students_for_finance * share)
+                remaining_students -= students
+
+            # Простая модель LTV: базовая сумма + надбавка за высокую завершённость.
+            ltv = 8000 + int(completion_rate * 160)
+
+            finance_channels.append(
+                {
+                    "name": name,
+                    "students": max(students, 0),
+                    "conversion_rate": conversion_rate,
+                    "completion_rate": completion_rate,
+                    "ltv": ltv,
+                }
+            )
+    else:
+        # Если данных по студентам нет, показываем небольшие демо-значения.
+        for name, conversion_rate, completion_rate, ltv in [
+            ("Таргет ВК", 3.0, 60, 12000),
+            ("YouTube и контент", 1.8, 70, 14000),
+        ]:
+            finance_channels.append(
+                {
+                    "name": name,
+                    "students": 0,
+                    "conversion_rate": conversion_rate,
+                    "completion_rate": completion_rate,
+                    "ltv": ltv,
+                }
+            )
+
+    # Продажи и возвраты по неделям: раскладываем суммарные продажи по 4 неделям.
+    # Берём продажи как примерно число студентов за период, возвраты ~5%.
+    total_sales = max(total_students_for_finance, 0)
+    weekly_shares = [0.2, 0.3, 0.25, 0.25]
+    refund_rate = 0.05
+
+    finance_sales: list[dict] = []
+    remaining_sales = total_sales
+    for idx, share in enumerate(weekly_shares):
+        if idx == len(weekly_shares) - 1:
+            sales = remaining_sales
+        else:
+            sales = int(total_sales * share)
+            remaining_sales -= sales
+
+        refunds = int(sales * refund_rate)
+        finance_sales.append(
+            {
+                "label": f"Неделя {idx + 1}",
+                "sales": max(sales, 0),
+                "refunds": max(refunds, 0),
+            }
+        )
+
+    # Средний LTV и оценка выручки: взвешенное среднее по каналам.
+    if finance_channels and total_students_for_finance > 0:
+        total_ltv_sum = sum(
+            ch["ltv"] * max(ch["students"], 0) for ch in finance_channels
+        )
+        avg_ltv = int(total_ltv_sum / max(total_students_for_finance, 1))
+        paying_students = total_students_for_finance
+    else:
+        avg_ltv = 0
+        paying_students = 0
+
+    finance_ltv = SimpleNamespace(
+        avg_ltv=avg_ltv,
+        paying_students=paying_students,
+        estimated_revenue=avg_ltv * paying_students,
+    )
+
     return render_template(
         "index.html",
         courses=courses,
@@ -395,6 +487,9 @@ def index():
         upcoming_slots_count=upcoming_slots_count,
         period=period,
         period_label=period_label,
+        finance_channels=finance_channels,
+        finance_sales=finance_sales,
+        finance_ltv=finance_ltv,
     )
 
 
@@ -904,6 +999,17 @@ def students_list():
     if start_at is not None:
         filters.append(Event.occurred_at >= start_at)
 
+    # Для списка студентов считаем также количество завершённых курсов,
+    # чтобы приблизительно оценить средний прогресс по курсам.
+    completed_courses_expr = func.count(
+        distinct(
+            case(
+                (Event.event_type == EventTypeEnum.COURSE_COMPLETED.value, Event.course_id),
+                else_=None,
+            )
+        )
+    )
+
     rows = (
         db.query(
             Student.id,
@@ -912,6 +1018,7 @@ def students_list():
             func.min(Event.occurred_at),
             func.max(Event.occurred_at),
             func.count(distinct(Event.course_id)),
+            completed_courses_expr,
         )
         .join(Event, Event.student_id == Student.id)
         .filter(*filters)
@@ -929,11 +1036,21 @@ def students_list():
         first_seen_at,
         last_seen_at,
         courses_count,
+        completed_courses_count,
     ) in rows:
         status_label, status_code, status_badge_color = _get_student_status(last_seen_at)
 
         # Для списка студентов также используем external_id как отображаемое имя
         display_name = external_id
+
+        completed_courses_count = completed_courses_count or 0
+        courses_count = courses_count or 0
+
+        overall_progress = (
+            int(completed_courses_count / courses_count * 100)
+            if courses_count
+            else 0
+        )
 
         students.append(
             {
@@ -944,7 +1061,8 @@ def students_list():
                 "status_label": status_label,
                 "status_code": status_code,
                 "status_badge_color": status_badge_color,
-                "courses_count": courses_count or 0,
+                "courses_count": courses_count,
+                "overall_progress": overall_progress,
                 "first_seen_at": _format_dt_short(first_seen_at),
                 "last_seen_at": _format_dt_short(last_seen_at),
             }
@@ -965,6 +1083,7 @@ def students_list():
                     "status": s["status_code"],
                     "status_label": s["status_label"],
                     "courses_count": s["courses_count"],
+                    "overall_progress": s["overall_progress"],
                     "first_seen_at": s["first_seen_at"],
                     "last_seen_at": s["last_seen_at"],
                 }

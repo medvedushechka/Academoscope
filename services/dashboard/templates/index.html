@@ -47,25 +47,6 @@
     </div>
   </div>
 
-  <div class="d-flex justify-content-end mb-3">
-    <div class="btn-group btn-group-sm" role="group">
-      <button
-        type="button"
-        class="btn btn-outline-secondary disabled"
-        data-i18n-key="index.export.csv"
-      >
-        Экспорт в CSV
-      </button>
-      <button
-        type="button"
-        class="btn btn-outline-secondary disabled"
-        data-i18n-key="index.export.pdf"
-      >
-        Экспорт в PDF
-      </button>
-    </div>
-  </div>
-
   <p class="text-muted small mb-3 js-period-label">Показатели {{ period_label }}.</p>
 
   {% if courses %}
@@ -262,7 +243,7 @@
     <div class="row mb-4">
       <div class="col-lg-7 mb-3">
         <div class="card metric-card h-100">
-          <div class="card-body">
+          <div class="card-body d-flex flex-column">
             <div class="d-flex justify-content-between align-items-center mb-2">
               <h2
                 class="h6 mb-0"
@@ -277,10 +258,10 @@
                 по всем данным
               </span>
             </div>
-            <div class="chart-scroll-x">
+            <div class="chart-scroll-x flex-grow-1 d-flex align-items-center">
               <canvas
                 id="completionChart"
-                height="140"
+                height="200"
                 style="min-width: {{ (course_titles|length * 40) if (course_titles|length * 40) > 400 else 400 }}px;"
               ></canvas>
             </div>
@@ -429,7 +410,7 @@
       </div>
     </div>
 
-    <div class="table-responsive acad-table-scroll" data-aos="fade-up" data-aos-delay="100">
+    <div class="table-responsive acad-table-scroll mb-4" data-aos="fade-up" data-aos-delay="100">
       <table class="table table-striped align-middle">
         <thead>
           <tr>
@@ -697,18 +678,45 @@
                   Эффективность каналов привлечения
                 </h3>
                 <span
-                  class="badge bg-warning text-dark"
-                  data-i18n-key="index.badge.soon"
+                  class="badge bg-secondary"
+                  data-i18n-key="index.badge.demo"
                 >
-                  Скоро
+                  Демо
                 </span>
               </div>
-              <p
-                class="mb-0 small text-muted"
-                data-i18n-key="index.finance.channels_desc"
-              >
-                Здесь будет таблица с каналами, конверсией, % завершения и LTV.
+              <p class="mb-2 small text-muted">
+                Демонстрационные данные по распределению студентов по каналам.
               </p>
+              {% if finance_channels %}
+                <div class="table-responsive">
+                  <table class="table table-sm mb-0 align-middle">
+                    <thead class="small text-muted">
+                      <tr>
+                        <th>Канал</th>
+                        <th class="text-end">Студентов</th>
+                        <th class="text-end">Конверсия</th>
+                        <th class="text-end">Завершение</th>
+                        <th class="text-end">LTV</th>
+                      </tr>
+                    </thead>
+                    <tbody class="small">
+                      {% for ch in finance_channels %}
+                        <tr>
+                          <td>{{ ch.name }}</td>
+                          <td class="text-end">{{ ch.students }}</td>
+                          <td class="text-end">{{ ch.conversion_rate }}%</td>
+                          <td class="text-end">{{ ch.completion_rate }}%</td>
+                          <td class="text-end">{{ ch.ltv }} ₽</td>
+                        </tr>
+                      {% endfor %}
+                    </tbody>
+                  </table>
+                </div>
+              {% else %}
+                <p class="mb-0 small text-muted">
+                  Сейчас нет данных по каналам привлечения.
+                </p>
+              {% endif %}
             </div>
           </div>
         </div>
@@ -723,18 +731,28 @@
                   Динамика продаж и возвратов
                 </h3>
                 <span
-                  class="badge bg-warning text-dark"
-                  data-i18n-key="index.badge.soon"
+                  class="badge bg-secondary"
+                  data-i18n-key="index.badge.demo"
                 >
-                  Скоро
+                  Демо
                 </span>
               </div>
-              <p
-                class="mb-0 small text-muted"
-                data-i18n-key="index.finance.sales_refunds_desc"
-              >
-                Линейный график продаж и возвратов по дням или неделям.
+              <p class="mb-2 small text-muted">
+                Демонстрационные данные по числу оплаченных заказов и возвратов.
               </p>
+              {% if finance_sales %}
+                <ul class="mb-0 small text-muted">
+                  {% for row in finance_sales %}
+                    <li>
+                      {{ row.label }} — продажи: {{ row.sales }}, возвраты: {{ row.refunds }}
+                    </li>
+                  {% endfor %}
+                </ul>
+              {% else %}
+                <p class="mb-0 small text-muted">
+                  Сейчас нет данных по продажам и возвратам.
+                </p>
+              {% endif %}
             </div>
           </div>
         </div>
@@ -749,18 +767,26 @@
                   Средняя ценность студента (LTV)
                 </h3>
                 <span
-                  class="badge bg-warning text-dark"
-                  data-i18n-key="index.badge.soon"
+                  class="badge bg-secondary"
+                  data-i18n-key="index.badge.demo"
                 >
-                  Скоро
+                  Демо
                 </span>
               </div>
-              <p
-                class="mb-0 small text-muted"
-                data-i18n-key="index.finance.ltv_desc"
-              >
-                Появится после подключения биллинга и данных о выручке.
+              <p class="mb-2 small text-muted">
+                Оценка средней ценности студента по тестовым данным.
               </p>
+              {% if finance_ltv %}
+                <ul class="mb-0 small text-muted">
+                  <li>Средний LTV: {{ finance_ltv.avg_ltv }} ₽</li>
+                  <li>Платящих студентов: {{ finance_ltv.paying_students }}</li>
+                  <li>Оценка выручки: {{ finance_ltv.estimated_revenue }} ₽</li>
+                </ul>
+              {% else %}
+                <p class="mb-0 small text-muted">
+                  Сейчас нет данных по LTV.
+                </p>
+              {% endif %}
             </div>
           </div>
         </div>

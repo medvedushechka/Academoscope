@@ -156,7 +156,7 @@
             <canvas
               id="teacherCoursesChart"
               height="120"
-              style="min-width: {{ (teacher_courses_labels|length * 40) | max(400) }}px;"
+              style="min-width: {{ (teacher_courses_labels|length * 40) if (teacher_courses_labels|length * 40) > 400 else 400 }}px;"
             ></canvas>
           </div>
         </div>

@@ -36,6 +36,18 @@
           />
         </div>
       </div>
+      <div class="col-12 col-md-6 col-lg-4 mt-2 mt-md-0">
+        <div class="form-check form-switch">
+          <input
+            class="form-check-input"
+            type="checkbox"
+            id="studentsRiskToggle"
+          />
+          <label class="form-check-label small" for="studentsRiskToggle">
+            Только студенты в группе риска
+          </label>
+        </div>
+      </div>
     </div>
 
     <div class="table-responsive acad-table-scroll acad-table-scroll-full" data-aos="fade-up">
@@ -43,16 +55,47 @@
         <thead>
           <tr>
             <th data-i18n-key="students.table.student">Студент</th>
-            <th class="text-center" data-i18n-key="students.table.status">Статус</th>
-            <th class="text-center" data-i18n-key="students.table.courses">Курсы</th>
-            <th class="text-center" data-i18n-key="students.table.first_seen">Дата регистрации</th>
-            <th class="text-center" data-i18n-key="students.table.last_seen">Последний визит</th>
+            <th
+              class="text-center"
+              id="studentsStatusHeader"
+              data-i18n-key="students.table.status"
+            >
+              Статус
+            </th>
+            <th
+              class="text-center"
+              id="studentsCoursesHeader"
+              data-i18n-key="students.table.courses"
+            >
+              Курсы
+            </th>
+            <th
+              class="text-center"
+              id="studentsProgressHeader"
+              data-i18n-key="students.table.avg_progress"
+            >
+              Средний прогресс
+            </th>
+            <th class="text-center" data-i18n-key="students.table.first_seen">
+              Дата регистрации
+            </th>
+            <th
+              class="text-center"
+              id="studentsLastSeenHeader"
+              data-i18n-key="students.table.last_seen"
+            >
+              Последний визит
+            </th>
           </tr>
         </thead>
         <tbody class="js-students-tbody">
           {% for s in students %}
             <tr
               data-search-text="{{ (s.display_name ~ ' ' ~ (s.email or '') ~ ' ' ~ s.external_id)|lower }}"
+              data-status="{{ s.status_code }}"
+              data-courses="{{ s.courses_count }}"
+              data-progress="{{ s.overall_progress }}"
+              data-last-seen="{{ s.last_seen_at or '' }}"
             >
               <td>
                 <a href="/students/{{ s.id }}">{{ s.display_name }}</a>
@@ -70,6 +113,9 @@
               </td>
               <td class="text-center">
                 {{ s.courses_count }}
+              </td>
+              <td class="text-center">
+                {{ s.overall_progress }}%
               </td>
               <td class="text-center">
                 {{ s.first_seen_at or "—" }}
@@ -94,14 +140,23 @@
   <script data-page-script="students-list">
     (function () {
       const input = document.getElementById("studentsSearchInput");
-      if (!input) return;
+      const riskToggle = document.getElementById("studentsRiskToggle");
+      const tbody = document.querySelector(".js-students-tbody");
+      if (!input || !tbody) return;
 
       function applyFilter() {
         const query = input.value.trim().toLowerCase();
-        const rows = document.querySelectorAll(".js-students-tbody tr");
+        const riskOnly = riskToggle && riskToggle.checked;
+        const rows = tbody.querySelectorAll("tr");
+
         rows.forEach((row) => {
           const text = (row.getAttribute("data-search-text") || "").toLowerCase();
-          if (!query || text.includes(query)) {
+          const status = row.getAttribute("data-status") || "";
+
+          const matchesQuery = !query || text.includes(query);
+          const matchesRisk = !riskOnly || status === "risk";
+
+          if (matchesQuery && matchesRisk) {
             row.classList.remove("d-none");
           } else {
             row.classList.add("d-none");
@@ -110,6 +165,95 @@
       }
 
       input.addEventListener("input", applyFilter);
+      if (riskToggle) {
+        riskToggle.addEventListener("change", applyFilter);
+      }
+
+      function sortRows(getValue, direction) {
+        const rows = Array.from(tbody.querySelectorAll("tr"));
+        rows.sort((a, b) => {
+          const av = getValue(a);
+          const bv = getValue(b);
+
+          if (av === bv) return 0;
+          if (av === null || av === undefined || av === "") return 1;
+          if (bv === null || bv === undefined || bv === "") return -1;
+
+          if (av < bv) return direction === "asc" ? -1 : 1;
+          if (av > bv) return direction === "asc" ? 1 : -1;
+          return 0;
+        });
+
+        rows.forEach((row) => tbody.appendChild(row));
+      }
+
+      const statusHeader = document.getElementById("studentsStatusHeader");
+      const coursesHeader = document.getElementById("studentsCoursesHeader");
+      const lastSeenHeader = document.getElementById("studentsLastSeenHeader");
+      const progressHeader = document.getElementById("studentsProgressHeader");
+
+      const statusOrder = {
+        risk: 0,
+        inactive: 1,
+        active: 2,
+        no_data: 3,
+      };
+
+      if (statusHeader) {
+        let dir = "desc";
+        statusHeader.style.cursor = "pointer";
+        statusHeader.addEventListener("click", () => {
+          sortRows((row) => {
+            const code = row.getAttribute("data-status") || "no_data";
+            return Object.prototype.hasOwnProperty.call(statusOrder, code)
+              ? statusOrder[code]
+              : 99;
+          }, dir);
+          dir = dir === "desc" ? "asc" : "desc";
+          applyFilter();
+        });
+      }
+
+      if (coursesHeader) {
+        let dir = "desc";
+        coursesHeader.style.cursor = "pointer";
+        coursesHeader.addEventListener("click", () => {
+          sortRows(
+            (row) => parseInt(row.getAttribute("data-courses") || "0", 10),
+            dir,
+          );
+          dir = dir === "desc" ? "asc" : "desc";
+          applyFilter();
+        });
+      }
+
+      if (progressHeader) {
+        let dir = "desc";
+        progressHeader.style.cursor = "pointer";
+        progressHeader.addEventListener("click", () => {
+          sortRows(
+            (row) => parseInt(row.getAttribute("data-progress") || "0", 10),
+            dir,
+          );
+          dir = dir === "desc" ? "asc" : "desc";
+          applyFilter();
+        });
+      }
+
+      if (lastSeenHeader) {
+        let dir = "desc";
+        lastSeenHeader.style.cursor = "pointer";
+        lastSeenHeader.addEventListener("click", () => {
+          sortRows(
+            (row) => row.getAttribute("data-last-seen") || "",
+            dir,
+          );
+          dir = dir === "desc" ? "asc" : "desc";
+          applyFilter();
+        });
+      }
+
+      applyFilter();
     })();
   </script>
 {% endblock %}
