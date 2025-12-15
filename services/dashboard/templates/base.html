@@ -216,12 +216,25 @@
         overflow-y: auto;
       }
 
+      .acad-table-scroll.acad-table-scroll-full {
+        max-height: calc(100vh - 220px);
+      }
+
       .acad-table-scroll table {
         margin-bottom: 0;
       }
 
       body.theme-dark .donut-legend-label {
         color: #e5e7eb;
+      }
+
+      .chart-scroll-x {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+      }
+
+      .chart-scroll-x canvas {
+        display: block;
       }
 
       .acad-back-btn {
@@ -283,6 +296,13 @@
           >
             Аналитический центр для онлайн-курсов
           </span>
+          <a
+            href="/schedule"
+            class="btn btn-sm btn-outline-light d-none d-md-inline-flex"
+          >
+            <i class="fa-solid fa-calendar-alt me-1"></i>
+            Расписание
+          </a>
           <div
             class="btn-group btn-group-sm d-none d-sm-inline-flex"
             role="group"
@@ -306,16 +326,11 @@
             </button>
           </div>
           <button
-            class="btn btn-sm btn-outline-light position-relative"
+            class="btn btn-sm btn-outline-light"
             type="button"
             data-ai-scroll
           >
             <i class="fa-solid fa-brain me-1"></i>
-            <span
-              class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger"
-            >
-              0
-            </span>
           </button>
           <button
             class="btn btn-sm btn-outline-light rounded-pill"
@@ -423,6 +438,7 @@
             "index.badge.available_now": "Уже доступно",
             "index.badge.soon": "Скоро",
             "index.badge.demo": "Демо",
+            "index.badge.ai": "AI",
             "course.period_label": "Период:",
             "course.metric.total_students": "Студентов всего",
             "course.metric.completed_students": "Завершили курс",
@@ -562,6 +578,7 @@
             "index.badge.available_now": "Available now",
             "index.badge.soon": "Coming soon",
             "index.badge.demo": "Demo",
+            "index.badge.ai": "AI",
             "course.period_label": "Period:",
             "course.metric.total_students": "Total students",
             "course.metric.completed_students": "Course completions",
@@ -771,19 +788,41 @@
           aiScrollBtn.addEventListener("click", function (event) {
             event.preventDefault();
 
-            const existingTarget = document.querySelector("#ai-insights");
-            if (existingTarget) {
-              existingTarget.scrollIntoView({ behavior: "smooth", block: "start" });
-              highlightAiSection(existingTarget);
+            // 1) Пытаемся найти AI-блок на текущей странице: сначала на главной,
+            // затем на карточке студента.
+            const currentTargets = [
+              document.querySelector("#ai-insights"),
+              document.querySelector("#student-ai-card"),
+            ].filter(Boolean);
+
+            if (currentTargets.length > 0) {
+              const target = currentTargets[0];
+              target.scrollIntoView({ behavior: "smooth", block: "start" });
+              highlightAiSection(target);
+
+              // Перезапускаем соответствующий AI-запрос, если есть экспортированная функция.
+              if (target.id === "ai-insights" && window.loadAiRecommendations) {
+                window.loadAiRecommendations();
+              } else if (
+                target.id === "student-ai-card" &&
+                window.loadStudentAiInsights
+              ) {
+                window.loadStudentAiInsights();
+              }
               return;
             }
 
+            // 2) Если на текущей странице нет AI-блоков, загружаем главную и
+            // скроллим к её AI-секции, затем инициируем загрузку рекомендаций.
             const url = new URL("/", window.location.origin);
             loadPage(url.toString(), true).then(() => {
               const target = document.querySelector("#ai-insights");
               if (target) {
                 target.scrollIntoView({ behavior: "smooth", block: "start" });
                 highlightAiSection(target);
+                if (window.loadAiRecommendations) {
+                  window.loadAiRecommendations();
+                }
               }
             });
           });

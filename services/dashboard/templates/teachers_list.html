@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+
+{% block title %}Teachers — Academoscope{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
+    <div class="d-flex align-items-center gap-2">
+      <a href="/" class="btn btn-sm acad-back-btn" aria-label="Назад">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span class="visually-hidden">Назад</span>
+      </a>
+      <h1 class="mb-0">
+        Преподаватели
+      </h1>
+    </div>
+  </div>
+
+  <p class="text-muted small mb-3">
+    Период: {{ filters.start_date_str }} — {{ filters.end_date_str }}.
+  </p>
+
+  {% if teachers %}
+    <div class="row mb-3" data-aos="fade-up">
+      <div class="col-12 col-md-6 col-lg-4">
+        <div class="input-group input-group-sm">
+          <span class="input-group-text">
+            <i class="fa-solid fa-magnifying-glass"></i>
+          </span>
+          <input
+            type="text"
+            class="form-control"
+            id="teachersSearchInput"
+            placeholder="Поиск по имени или email"
+          />
+        </div>
+      </div>
+    </div>
+
+    <div class="table-responsive acad-table-scroll acad-table-scroll-full" data-aos="fade-up">
+      <table class="table table-striped align-middle">
+        <thead>
+          <tr>
+            <th>Преподаватель</th>
+            <th>Email</th>
+            <th class="text-center">Занятий</th>
+            <th class="text-center">Курсов</th>
+            <th class="text-center">Часов</th>
+            <th
+              class="text-center"
+              id="teachersProblemHeader"
+              style="cursor: pointer;"
+            >
+              Проблемные курсы
+            </th>
+            <th class="text-center">Первое занятие</th>
+            <th class="text-center">Последнее занятие</th>
+          </tr>
+        </thead>
+        <tbody class="js-teachers-tbody">
+          {% for t in teachers %}
+            <tr
+              data-search-text="{{ (t.name ~ ' ' ~ (t.email or ''))|lower }}"
+              data-problem-courses="{{ t.problem_courses_count }}"
+            >
+              <td>
+                <a href="/teachers/{{ t.id }}">{{ t.name }}</a>
+              </td>
+              <td>{{ t.email or "—" }}</td>
+              <td class="text-center">{{ t.slots_count }}</td>
+              <td class="text-center">{{ t.courses_count }}</td>
+              <td class="text-center">{{ t.total_hours }}</td>
+              <td class="text-center">
+                {% if t.problem_courses_count %}
+                  <a href="/teachers/{{ t.id }}#problem-courses">
+                    {{ t.problem_courses_count }}
+                  </a>
+                {% else %}
+                  0
+                {% endif %}
+              </td>
+              <td class="text-center">{{ t.first_slot_date or "—" }}</td>
+              <td class="text-center">{{ t.last_slot_date or "—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-muted">Пока нет преподавателей или занятий в выбранном периоде.</p>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script data-page-script="teachers-list">
+    (function () {
+      const input = document.getElementById("teachersSearchInput");
+      if (!input) return;
+
+      function applyFilter() {
+        const query = input.value.trim().toLowerCase();
+        const rows = document.querySelectorAll(".js-teachers-tbody tr");
+        rows.forEach((row) => {
+          const text = (row.getAttribute("data-search-text") || "").toLowerCase();
+          if (!query || text.includes(query)) {
+            row.classList.remove("d-none");
+          } else {
+            row.classList.add("d-none");
+          }
+        });
+      }
+
+      input.addEventListener("input", applyFilter);
+
+      const problemHeader = document.getElementById("teachersProblemHeader");
+      if (problemHeader) {
+        let sortDir = "desc";
+        problemHeader.addEventListener("click", () => {
+          const tbody = document.querySelector(".js-teachers-tbody");
+          if (!tbody) return;
+
+          const rows = Array.from(tbody.querySelectorAll("tr"));
+          rows.sort((a, b) => {
+            const av = parseInt(a.getAttribute("data-problem-courses") || "0", 10);
+            const bv = parseInt(b.getAttribute("data-problem-courses") || "0", 10);
+            return sortDir === "desc" ? bv - av : av - bv;
+          });
+
+          rows.forEach((row) => tbody.appendChild(row));
+          sortDir = sortDir === "desc" ? "asc" : "desc";
+        });
+      }
+    })();
+  </script>
+{% endblock %}

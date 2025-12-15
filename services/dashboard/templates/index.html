@@ -1,10 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Курсы — Academoscope{% endblock %}
+{% block title %}Дашборд школы — Academoscope{% endblock %}
 
 {% block content %}
   <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
-    <h1 class="mb-0" data-i18n-key="index.title">Курсы</h1>
+    <h1 class="mb-0" data-i18n-key="index.title">Дашборд школы</h1>
     <div class="d-flex align-items-center gap-2 mt-2 mt-md-0">
       <span
         class="text-muted small d-none d-sm-inline"
@@ -71,7 +71,7 @@
   {% if courses %}
     <div class="row mb-4" data-aos="fade-up">
       <div class="col-12 col-md-6 col-xl-3 mb-3">
-        <div class="card metric-card h-100">
+        <div class="card metric-card h-100" data-kpi-role="risk-students">
           <div class="card-body text-center">
             <h6
               class="card-subtitle mb-2 text-muted text-uppercase small"
@@ -172,16 +172,19 @@
           <div class="card-body text-center">
             <h6
               class="card-subtitle mb-2 text-muted text-uppercase small"
-              data-i18n-key="index.metric.revenue"
+              data-i18n-key="index.metric.teachers"
             >
-              Выручка (MRR / ARR)
+              Преподаватели
             </h6>
-            <h3 class="card-title mb-1">—</h3>
-            <div
-              class="text-muted small"
-              data-i18n-key="index.metric.revenue_hint"
+            <h3
+              class="card-title mb-1"
+              data-countup-target="{{ total_teachers }}"
             >
-              Подключите биллинг, чтобы видеть выручку.
+              {{ total_teachers }}
+            </h3>
+            <div class="text-muted small">
+              Активны в ближайшие 7 дней:
+              <strong>{{ active_teachers_7d }}</strong>
             </div>
           </div>
         </div>
@@ -191,16 +194,21 @@
           <div class="card-body text-center">
             <h6
               class="card-subtitle mb-2 text-muted text-uppercase small"
-              data-i18n-key="index.metric.churn"
+              data-i18n-key="index.metric.schedule_upcoming"
             >
-              Прогнозируемый отток
+              Ближайшие занятия (7 дней)
             </h6>
-            <h3 class="card-title mb-1">—</h3>
-            <div
-              class="text-muted small"
-              data-i18n-key="index.metric.churn_hint"
+            <h3
+              class="card-title mb-1"
+              data-countup-target="{{ upcoming_slots_count }}"
             >
-              Появится после подключения модуля прогнозной аналитики.
+              {{ upcoming_slots_count }}
+            </h3>
+            <div class="text-muted small">
+              <a href="/schedule" class="text-decoration-none">
+                Открыть расписание
+                <i class="fa-solid fa-arrow-up-right-from-square ms-1"></i>
+              </a>
             </div>
           </div>
         </div>
@@ -229,6 +237,26 @@
           </div>
         </a>
       </div>
+      <div class="col-12 col-md-6 col-xl-3 mb-3">
+        <a href="/teachers" class="text-decoration-none">
+          <div class="card metric-card h-100">
+            <div class="card-body text-center">
+              <h6
+                class="card-subtitle mb-2 text-muted text-uppercase small"
+              >
+                Преподаватели
+              </h6>
+              <h3 class="card-title mb-1">
+                <i class="fa-solid fa-chalkboard-user me-2 text-primary"></i>
+                Открыть список
+              </h3>
+              <div class="text-muted small">
+                Перейдите к списку преподавателей и их нагрузке.
+              </div>
+            </div>
+          </div>
+        </a>
+      </div>
     </div>
 
     <div class="row mb-4">
@@ -249,7 +277,13 @@
                 по всем данным
               </span>
             </div>
-            <canvas id="completionChart" height="140"></canvas>
+            <div class="chart-scroll-x">
+              <canvas
+                id="completionChart"
+                height="140"
+                style="min-width: {{ (course_titles|length * 40) if (course_titles|length * 40) > 400 else 400 }}px;"
+              ></canvas>
+            </div>
           </div>
         </div>
       </div>
@@ -290,6 +324,111 @@
       </div>
     </div>
 
+    {% if upcoming_slots %}
+      <section class="mb-4" data-aos="fade-up">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h2 class="h5 mb-0">Ближайшие занятия (7 дней)</h2>
+          <a href="/schedule" class="btn btn-sm btn-outline-secondary">
+            Открыть расписание
+            <i class="fa-solid fa-arrow-up-right-from-square ms-1"></i>
+          </a>
+        </div>
+        <div class="table-responsive acad-table-scroll">
+          <table class="table table-striped align-middle mb-0">
+            <thead>
+              <tr>
+                <th>Дата</th>
+                <th>Время</th>
+                <th>Курс</th>
+                <th>Урок</th>
+                <th>Преподаватель</th>
+                <th>Группа</th>
+                <th>Локация</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for s in upcoming_slots %}
+                <tr>
+                  <td>{{ s.start_date }}</td>
+                  <td>
+                    {{ s.start_time }}
+                    {% if s.end_time %}
+                      &ndash; {{ s.end_time }}
+                    {% endif %}
+                  </td>
+                  <td>{{ s.course_title }}</td>
+                  <td>{{ s.lesson_title or "—" }}</td>
+                  <td>
+                    {% if s.teacher_id %}
+                      <a href="/teachers/{{ s.teacher_id }}">{{ s.teacher_name }}</a>
+                    {% else %}
+                      {{ s.teacher_name }}
+                    {% endif %}
+                  </td>
+                  <td>{{ s.group_name or "—" }}</td>
+                  <td>{{ s.location or "—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
+
+    <div class="row mb-4" data-aos="fade-up">
+      <div class="col-12 col-md-6 col-xl-3 mb-3">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <h6
+              class="card-subtitle mb-2 text-muted text-uppercase small"
+            >
+              Студенты в группе риска
+            </h6>
+            <h3 class="card-title mb-1">
+              {{ risk_students_count }}
+            </h3>
+            <div class="text-muted small">
+              Давно не заходили и требуют внимания.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3 mb-3">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <h6
+              class="card-subtitle mb-2 text-muted text-uppercase small"
+            >
+              Курсы без активности 30 дней
+            </h6>
+            <h3 class="card-title mb-1">
+              {{ inactive_courses_30d_count }}
+            </h3>
+            <div class="text-muted small">
+              По ним не было событий за последний месяц.
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="col-12 col-md-6 col-xl-3 mb-3">
+        <div class="card metric-card h-100">
+          <div class="card-body text-center">
+            <h6
+              class="card-subtitle mb-2 text-muted text-uppercase small"
+            >
+              Проблемные курсы
+            </h6>
+            <h3 class="card-title mb-1">
+              {{ problem_courses_count }}
+            </h3>
+            <div class="text-muted small">
+              Низкий процент завершения (&lt; 50%).
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div class="table-responsive acad-table-scroll" data-aos="fade-up" data-aos-delay="100">
       <table class="table table-striped align-middle">
         <thead>
@@ -308,7 +447,10 @@
         <tbody class="js-courses-tbody">
           {% for course in courses %}
             {% set rate = course.completion_rate %}
-            <tr>
+            <tr
+              data-problem-course="{{ 1 if course.problem_course else 0 }}"
+              data-inactive-30d="{{ 1 if course.inactive_30d else 0 }}"
+            >
               <td>
                 <a href="/courses/{{ course.id }}?period={{ period|default('all') }}">{{ course.title }}</a>
               </td>
@@ -400,8 +542,12 @@
                 <ul class="mb-0 small text-muted">
                   {% for l in behavior_popular_lessons %}
                     <li>
-                      <strong>{{ l.course_title }}</strong> — {{ l.lesson_title }}
-                      ({{ l.started_students }})
+                      <strong>
+                        <a href="/courses/{{ l.course_id }}?period={{ period|default('all') }}">
+                          {{ l.course_title }}
+                        </a>
+                      </strong>
+                      — {{ l.lesson_title }} ({{ l.started_students }})
                     </li>
                   {% endfor %}
                 </ul>
@@ -512,8 +658,12 @@
                 <ul class="mb-0 small text-muted">
                   {% for l in behavior_difficult_lessons %}
                     <li>
-                      <strong>{{ l.course_title }}</strong> — {{ l.lesson_title }}
-                      ({{ l.drop_off_rate }}% отток)
+                      <strong>
+                        <a href="/courses/{{ l.course_id }}?period={{ period|default('all') }}">
+                          {{ l.course_title }}
+                        </a>
+                      </strong>
+                      — {{ l.lesson_title }} ({{ l.drop_off_rate }}% отток)
                     </li>
                   {% endfor %}
                 </ul>
@@ -629,7 +779,7 @@
       <div class="row g-3">
         <div class="col-12 col-lg-6">
           <div class="card metric-card h-100">
-            <div class="card-body" id="ai-recommendations-card" data-ai-enabled="{{ 'true' if ai_enabled else 'false' }}">
+            <div class="card-body">
               <div class="d-flex justify-content-between align-items-center mb-2">
                 <h3
                   class="h6 mb-0"
@@ -655,7 +805,9 @@
                   {% for s in risk_students %}
                     <li>
                       <a href="/students/{{ s.id }}">{{ s.display_name }}</a>
-                      {% if s.last_seen_at %}
+                      {% if s.days_since_last_visit is not none %}
+                        — не заходил {{ s.days_since_last_visit }} дн.
+                      {% elif s.last_seen_at %}
                         — последний визит {{ s.last_seen_at }}
                       {% endif %}
                     </li>
@@ -674,7 +826,7 @@
         </div>
         <div class="col-12 col-lg-6">
           <div class="card metric-card h-100">
-            <div class="card-body">
+            <div class="card-body" id="ai-recommendations-card" data-ai-enabled="{{ 'true' if ai_enabled else 'false' }}">
               <div class="d-flex justify-content-between align-items-center mb-2">
                 <h3
                   class="h6 mb-0"
@@ -682,12 +834,21 @@
                 >
                   Рекомендации по улучшению курса
                 </h3>
-                <span
-                  class="badge bg-secondary"
-                  data-i18n-key="index.badge.demo"
-                >
-                  Демо
-                </span>
+                {% if ai_enabled %}
+                  <span
+                    class="badge bg-success"
+                    data-i18n-key="index.badge.ai"
+                  >
+                    AI
+                  </span>
+                {% else %}
+                  <span
+                    class="badge bg-secondary"
+                    data-i18n-key="index.badge.demo"
+                  >
+                    Демо
+                  </span>
+                {% endif %}
               </div>
               <p
                 class="small text-muted mb-2"
@@ -744,6 +905,26 @@
       function getGridColor(theme) {
         const isDark = theme === "dark";
         return isDark ? "rgba(148, 163, 184, 0.35)" : "rgba(148, 163, 184, 0.25)";
+      }
+
+      let currentCoursesFilter = null;
+
+      function applyCoursesFilter() {
+        const rows = document.querySelectorAll(".js-courses-tbody tr");
+        rows.forEach((row) => {
+          row.classList.remove("d-none");
+          if (!currentCoursesFilter) return;
+
+          const attrName =
+            currentCoursesFilter === "problem"
+              ? "data-problem-course"
+              : "data-inactive-30d";
+          const val = row.getAttribute(attrName);
+          const isMatch = val === "1";
+          if (!isMatch) {
+            row.classList.add("d-none");
+          }
+        });
       }
 
       const completionCtx = document.getElementById("completionChart");
@@ -899,6 +1080,16 @@
               rate >= 80 ? "bg-success" : rate >= 50 ? "bg-warning" : "bg-danger";
             const periodParam = data.period || "all";
             const row = document.createElement("tr");
+            if (course.problem_course) {
+              row.setAttribute("data-problem-course", "1");
+            } else {
+              row.setAttribute("data-problem-course", "0");
+            }
+            if (course.inactive_30d) {
+              row.setAttribute("data-inactive-30d", "1");
+            } else {
+              row.setAttribute("data-inactive-30d", "0");
+            }
             row.innerHTML = `
               <td><a href="/courses/${course.id}?period=${periodParam}">${course.title}</a></td>
               <td class="text-center">${course.total_students}</td>
@@ -935,6 +1126,9 @@
           ];
           window.studentsDonut.update();
         }
+
+        // Переприменяем фильтр по курсам, если он активен
+        applyCoursesFilter();
       };
 
       (function initAiRecommendations() {
@@ -949,38 +1143,117 @@
 
         const originalHtml = container.innerHTML;
 
-        container.innerHTML = `
-          <div class="d-flex align-items-center justify-content-center py-3">
-            <div class="spinner-border text-primary spinner-border-sm me-2" role="status">
-              <span class="visually-hidden">Loading...</span>
+        function renderError(message) {
+          container.innerHTML =
+            '<p class="small text-muted mb-0">' +
+            message +
+            '<br /><span class="d-block mt-1">Вы можете нажать на иконку мозга в шапке, чтобы повторить запрос.</span></p>';
+        }
+
+        function loadAiRecommendations() {
+          container.innerHTML = `
+            <div class="d-flex align-items-center justify-content-center py-3">
+              <div class="spinner-border text-primary spinner-border-sm me-2" role="status">
+                <span class="visually-hidden">Loading...</span>
+              </div>
+              <span class="small text-muted">Загружаем рекомендации от AI...</span>
             </div>
-            <span class="small text-muted">Загружаем рекомендации от AI...</span>
-          </div>
-        `;
+          `;
 
-        fetch("/api/ai-recommendations", {
-          headers: { "X-Requested-With": "XMLHttpRequest" },
-        })
-          .then((resp) => resp.json())
-          .then((data) => {
-            if (!data || !Array.isArray(data.items) || !data.items.length) {
-              container.innerHTML = originalHtml;
-              return;
-            }
-
-            const list = document.createElement("ul");
-            list.className = "small mb-0 text-muted";
-            data.items.forEach((item) => {
-              const li = document.createElement("li");
-              li.textContent = item;
-              list.appendChild(li);
-            });
-            container.innerHTML = "";
-            container.appendChild(list);
+          fetch("/api/ai-recommendations", {
+            headers: { "X-Requested-With": "XMLHttpRequest" },
           })
-          .catch(() => {
-            container.innerHTML = originalHtml;
+            .then((resp) => resp.json())
+            .then((data) => {
+              if (!data || typeof data !== "object") {
+                renderError("Не удалось загрузить рекомендации AI.");
+                return;
+              }
+
+              const status = data.status || "error";
+              const items = Array.isArray(data.items) ? data.items : [];
+
+              if (status === "ok" && items.length) {
+                const list = document.createElement("ul");
+                list.className = "small mb-0 text-muted";
+                items.forEach((item) => {
+                  const li = document.createElement("li");
+                  li.textContent = item;
+                  list.appendChild(li);
+                });
+                container.innerHTML = "";
+                container.appendChild(list);
+                return;
+              }
+
+              if (status === "disabled") {
+                container.innerHTML =
+                  '<p class="small text-muted mb-0">AI-инсайты отключены в настройках.</p>';
+              } else if (status === "no_data") {
+                container.innerHTML =
+                  '<p class="small text-muted mb-0">Недостаточно данных для построения рекомендаций.</p>';
+              } else if (status === "empty") {
+                container.innerHTML =
+                  '<p class="small text-muted mb-0">Модель не вернула рекомендаций для текущих данных.</p>';
+              } else if (status === "error") {
+                renderError("Не удалось получить ответ от AI.");
+              } else {
+                renderError("Не удалось загрузить рекомендации AI.");
+              }
+            })
+            .catch(() => {
+              renderError("Ошибка при загрузке рекомендаций AI.");
+            });
+        }
+
+        // Экспортируем функцию на window, чтобы можно было перезапускать запрос по клику на brain-иконку.
+        window.loadAiRecommendations = loadAiRecommendations;
+
+        // Первый запуск при загрузке страницы.
+        loadAiRecommendations();
+      })();
+
+      // KPI-фильтры на главной
+      (function initKpiFilters() {
+        const kpiProblem = document.querySelector(
+          "[data-kpi-role='problem-courses']",
+        );
+        const kpiInactive = document.querySelector(
+          "[data-kpi-role='inactive-courses']",
+        );
+        const kpiRisk = document.querySelector(
+          "[data-kpi-role='risk-students']",
+        );
+
+        if (kpiProblem) {
+          kpiProblem.addEventListener("click", () => {
+            currentCoursesFilter =
+              currentCoursesFilter === "problem" ? null : "problem";
+            applyCoursesFilter();
           });
+        }
+
+        if (kpiInactive) {
+          kpiInactive.addEventListener("click", () => {
+            currentCoursesFilter =
+              currentCoursesFilter === "inactive" ? null : "inactive";
+            applyCoursesFilter();
+          });
+        }
+
+        if (kpiRisk) {
+          kpiRisk.addEventListener("click", () => {
+            const target = document.querySelector("#ai-insights");
+            if (!target) return;
+            target.scrollIntoView({ behavior: "smooth", block: "start" });
+            target.classList.remove("ai-highlight");
+            void target.offsetWidth;
+            target.classList.add("ai-highlight");
+            setTimeout(() => {
+              target.classList.remove("ai-highlight");
+            }, 1600);
+          });
+        }
       })();
       })();
 

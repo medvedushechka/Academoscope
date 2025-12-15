@@ -1,0 +1,452 @@
+{% extends "base.html" %}
+
+{% block title %}Schedule — Academoscope{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
+    <div class="d-flex align-items-center gap-2">
+      <a href="/" class="btn btn-sm acad-back-btn" aria-label="Назад">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span class="visually-hidden">Назад</span>
+      </a>
+      <h1 class="mb-0">
+        Расписание занятий
+      </h1>
+    </div>
+  </div>
+
+  <p class="text-muted small mb-3">
+    Период: {{ filters.start_date_str }} — {{ filters.end_date_str }}.
+  </p>
+
+  <form class="row g-2 align-items-end mb-3" method="get" action="/schedule">
+    <div class="col-12 col-md-3">
+      <label for="startDate" class="form-label form-label-sm">Начало периода</label>
+      <input
+        type="date"
+        class="form-control form-control-sm"
+        id="startDate"
+        name="start"
+        value="{{ filters.start_date_str }}"
+      />
+    </div>
+    <div class="col-12 col-md-3">
+      <label for="endDate" class="form-label form-label-sm">Конец периода</label>
+      <input
+        type="date"
+        class="form-control form-control-sm"
+        id="endDate"
+        name="end"
+        value="{{ filters.end_date_str }}"
+      />
+    </div>
+    <div class="col-12 col-md-3">
+      <label for="courseFilter" class="form-label form-label-sm">Курс</label>
+      <select
+        id="courseFilter"
+        name="course_id"
+        class="form-select form-select-sm"
+      >
+        <option value="">Все курсы</option>
+        {% for course in courses %}
+          <option
+            value="{{ course.id }}"
+            {% if filters.course_id == course.id %}selected{% endif %}
+          >
+            {{ course.title }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-3">
+      <label for="teacherFilter" class="form-label form-label-sm">Преподаватель</label>
+      <select
+        id="teacherFilter"
+        name="teacher_id"
+        class="form-select form-select-sm"
+      >
+        <option value="">Все преподаватели</option>
+        {% for teacher in teachers %}
+          <option
+            value="{{ teacher.id }}"
+            {% if filters.teacher_id == teacher.id %}selected{% endif %}
+          >
+            {{ teacher.name }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-3 mt-2">
+      <button type="submit" class="btn btn-sm btn-primary me-2">Применить</button>
+      <a
+        href="{{ url_for('schedule_export', start=filters.start_date_str, end=filters.end_date_str, course_id=filters.course_id, teacher_id=filters.teacher_id) }}"
+        class="btn btn-sm btn-outline-secondary"
+      >
+        Экспорт в Excel (CSV)
+      </a>
+    </div>
+  </form>
+
+  <hr class="my-3" />
+
+  <h2 class="h5 mb-2">Добавить занятие</h2>
+  <form class="row g-2 align-items-end mb-4" method="post" action="/schedule/new">
+    <div class="col-12 col-md-2">
+      <label for="newDate" class="form-label form-label-sm">Дата</label>
+      <input
+        type="date"
+        class="form-control form-control-sm"
+        id="newDate"
+        name="date"
+        value="{{ filters.start_date_str }}"
+        required
+      />
+    </div>
+    <div class="col-6 col-md-2">
+      <label for="newStartTime" class="form-label form-label-sm">Начало</label>
+      <input
+        type="time"
+        class="form-control form-control-sm"
+        id="newStartTime"
+        name="start_time"
+        required
+      />
+    </div>
+    <div class="col-6 col-md-2">
+      <label for="newEndTime" class="form-label form-label-sm">Окончание</label>
+      <input
+        type="time"
+        class="form-control form-control-sm"
+        id="newEndTime"
+        name="end_time"
+      />
+    </div>
+    <div class="col-12 col-md-3">
+      <label for="newCourse" class="form-label form-label-sm">Курс</label>
+      <select
+        id="newCourse"
+        name="course_id"
+        class="form-select form-select-sm"
+        required
+      >
+        <option value="" disabled selected>Выберите курс</option>
+        {% for course in courses %}
+          <option value="{{ course.id }}">{{ course.title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-3">
+      <label for="newLesson" class="form-label form-label-sm">Урок (опционально)</label>
+      <select
+        id="newLesson"
+        name="lesson_id"
+        class="form-select form-select-sm"
+      >
+        <option value="">Без привязки к уроку</option>
+        {% for lesson in lessons %}
+          <option
+            value="{{ lesson.id }}"
+            data-course-id="{{ lesson.course_id }}"
+          >
+            {{ lesson.course_title }} — {{ lesson.title }}
+          </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-3">
+      <label for="newTeacher" class="form-label form-label-sm">Преподаватель</label>
+      <select
+        id="newTeacher"
+        name="teacher_id"
+        class="form-select form-select-sm"
+        required
+      >
+        <option value="" disabled selected>Выберите преподавателя</option>
+        {% for teacher in teachers %}
+          <option value="{{ teacher.id }}">{{ teacher.name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-12 col-md-3">
+      <label for="newGroup" class="form-label form-label-sm">Группа (опционально)</label>
+      <input
+        type="text"
+        class="form-control form-control-sm"
+        id="newGroup"
+        name="group_name"
+        placeholder="Например, Группа A"
+      />
+    </div>
+    <div class="col-12 col-md-3">
+      <label for="newLocation" class="form-label form-label-sm">Локация (опционально)</label>
+      <input
+        type="text"
+        class="form-control form-control-sm"
+        id="newLocation"
+        name="location"
+        placeholder="Zoom, аудитория и т.п."
+      />
+    </div>
+    <div class="col-12 col-md-3 mt-2">
+      <button
+        type="submit"
+        class="btn btn-sm btn-success"
+        id="scheduleSubmitBtn"
+      >
+        Добавить
+      </button>
+      <button
+        type="button"
+        class="btn btn-sm btn-outline-secondary ms-2 d-none"
+        id="scheduleCancelEditBtn"
+      >
+        Отмена
+      </button>
+    </div>
+  </form>
+
+  {% if schedule_rows %}
+    <div class="table-responsive acad-table-scroll" data-aos="fade-up">
+      <table class="table table-striped align-middle">
+        <thead>
+          <tr>
+            <th>Дата</th>
+            <th>Время</th>
+            <th>Курс</th>
+            <th>Урок</th>
+            <th>Преподаватель</th>
+            <th>Группа</th>
+            <th>Локация</th>
+            <th class="text-center">Конфликт</th>
+            <th class="text-end">Действия</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in schedule_rows %}
+            <tr class="{% if row.has_conflict %}schedule-conflict-row{% endif %}">
+              <td>{{ row.start_date }}</td>
+              <td>
+                {{ row.start_time }}
+                {% if row.end_time %}
+                  &ndash; {{ row.end_time }}
+                {% endif %}
+              </td>
+              <td>{{ row.course_title }}</td>
+              <td>{{ row.lesson_title or "—" }}</td>
+              <td>
+                {% if row.teacher_name and row.teacher_id %}
+                  <a href="/teachers/{{ row.teacher_id }}">{{ row.teacher_name }}</a>
+                {% else %}
+                  {{ row.teacher_name }}
+                {% endif %}
+              </td>
+              <td>{{ row.group_name or "—" }}</td>
+              <td>{{ row.location or "—" }}</td>
+              <td class="text-center">
+                {% if row.has_conflict %}
+                  <span class="badge bg-danger-subtle text-danger schedule-conflict-badge">Конфликт</span>
+                {% else %}
+                  <span class="text-muted small">—</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                <div class="btn-group btn-group-sm" role="group">
+                  <button
+                    type="button"
+                    class="btn btn-outline-secondary"
+                    title="Редактировать занятие"
+                    data-schedule-edit
+                    data-slot-id="{{ row.id }}"
+                    data-date="{{ row.start_date }}"
+                    data-start-time="{{ row.start_time }}"
+                    data-end-time="{{ row.end_time or '' }}"
+                    data-course-id="{{ row.course_id }}"
+                    data-teacher-id="{{ row.teacher_id }}"
+                    data-lesson-id="{{ row.lesson_id or '' }}"
+                    data-group-name="{{ row.group_name or '' }}"
+                    data-location="{{ row.location or '' }}"
+                  >
+                    <i class="fa-solid fa-pen"></i>
+                  </button>
+                  <form
+                    method="post"
+                    action="{{ url_for('schedule_delete', slot_id=row.id) }}"
+                    onsubmit="return confirm('Удалить это занятие?');"
+                  >
+                    <button
+                      type="submit"
+                      class="btn btn-outline-danger"
+                      title="Удалить занятие"
+                    >
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% if schedule_dates %}
+    <h2 class="h5 mt-4 mb-2">Календарный вид по дням</h2>
+    <div class="row">
+      {% for date_key in schedule_dates %}
+        <div class="col-12 col-md-6 col-lg-4 mb-3">
+          <div class="card shadow-sm h-100">
+            <div class="card-header py-2 fw-semibold">
+              {{ date_key }}
+            </div>
+            <ul class="list-group list-group-flush small">
+              {% for row in schedule_by_date[date_key] %}
+                <li class="list-group-item d-flex flex-column">
+                  <div class="d-flex justify-content-between">
+                    <span>{{ row.start_time }}{% if row.end_time %}–{{ row.end_time }}{% endif %}</span>
+                    <span class="text-muted">
+                      {% if row.teacher_name and row.teacher_id %}
+                        <a href="/teachers/{{ row.teacher_id }}">{{ row.teacher_name }}</a>
+                      {% else %}
+                        {{ row.teacher_name }}
+                      {% endif %}
+                    </span>
+                  </div>
+                  <div>{{ row.course_title }}</div>
+                  {% if row.lesson_title %}
+                    <div class="text-muted">{{ row.lesson_title }}</div>
+                  {% endif %}
+                  {% if row.group_name or row.location %}
+                    <div class="text-muted small">
+                      {% if row.group_name %}Группа: {{ row.group_name }}{% endif %}
+                      {% if row.group_name and row.location %} · {% endif %}
+                      {% if row.location %}{{ row.location }}{% endif %}
+                    </div>
+                  {% endif %}
+                  {% if row.has_conflict %}
+                    <div class="text-danger small mt-1">Конфликт по преподавателю</div>
+                  {% endif %}
+                </li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  {% endif %}
+  {% else %}
+    <p class="text-muted">Пока нет занятий в выбранном периоде.</p>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script data-page-script="schedule-page">
+    (function () {
+      const courseSelect = document.getElementById("newCourse");
+      const lessonSelect = document.getElementById("newLesson");
+      const dateInput = document.getElementById("newDate");
+      const startInput = document.getElementById("newStartTime");
+      const endInput = document.getElementById("newEndTime");
+      const teacherSelect = document.getElementById("newTeacher");
+      const groupInput = document.getElementById("newGroup");
+      const locationInput = document.getElementById("newLocation");
+      const form = document.querySelector('form[action="/schedule/new"]');
+      const submitBtn = document.getElementById("scheduleSubmitBtn");
+      const cancelEditBtn = document.getElementById("scheduleCancelEditBtn");
+      const originalAction = form ? form.getAttribute("action") : null;
+      const originalSubmitText = submitBtn ? submitBtn.textContent : "Добавить";
+      let currentEditSlotId = null;
+
+      if (!courseSelect || !lessonSelect) return;
+
+      function filterLessons() {
+        const courseId = courseSelect.value;
+        const options = lessonSelect.options;
+        for (let i = 0; i < options.length; i++) {
+          const opt = options[i];
+          if (!opt.value) {
+            opt.hidden = false;
+            opt.disabled = false;
+            continue;
+          }
+          const optCourseId = opt.getAttribute("data-course-id");
+          const show = !courseId || optCourseId === courseId;
+          opt.hidden = !show;
+          opt.disabled = !show;
+        }
+      }
+
+      courseSelect.addEventListener("change", filterLessons);
+      filterLessons();
+
+      if (!form || !submitBtn || !cancelEditBtn) {
+        return;
+      }
+
+      function enterEditMode(btn) {
+        const slotId = btn.getAttribute("data-slot-id");
+        if (!slotId) return;
+
+        currentEditSlotId = slotId;
+
+        // Заполняем форму данными слота
+        const dateVal = btn.getAttribute("data-date");
+        const startVal = btn.getAttribute("data-start-time");
+        const endVal = btn.getAttribute("data-end-time") || "";
+        const courseId = btn.getAttribute("data-course-id") || "";
+        const teacherId = btn.getAttribute("data-teacher-id") || "";
+        const lessonId = btn.getAttribute("data-lesson-id") || "";
+        const groupName = btn.getAttribute("data-group-name") || "";
+        const location = btn.getAttribute("data-location") || "";
+
+        if (dateInput && dateVal) dateInput.value = dateVal;
+        if (startInput && startVal) startInput.value = startVal;
+        if (endInput) endInput.value = endVal;
+
+        if (courseSelect && courseId) {
+          courseSelect.value = courseId;
+        }
+        filterLessons();
+
+        if (lessonSelect) {
+          lessonSelect.value = lessonId;
+        }
+
+        if (teacherSelect && teacherId) {
+          teacherSelect.value = teacherId;
+        }
+
+        if (groupInput) groupInput.value = groupName;
+        if (locationInput) locationInput.value = location;
+
+        if (form && originalAction) {
+          form.setAttribute("action", "/schedule/" + slotId + "/edit");
+        }
+        submitBtn.textContent = "Сохранить";
+        cancelEditBtn.classList.remove("d-none");
+      }
+
+      function exitEditMode() {
+        currentEditSlotId = null;
+        if (form && originalAction) {
+          form.setAttribute("action", originalAction);
+        }
+        submitBtn.textContent = originalSubmitText;
+        cancelEditBtn.classList.add("d-none");
+
+        // Не очищаем форму полностью, чтобы можно было сразу создать новое занятие,
+        // но убираем возможную привязку к уроку, если она была недоступна.
+      }
+
+      const editButtons = document.querySelectorAll("[data-schedule-edit]");
+      editButtons.forEach((btn) => {
+        btn.addEventListener("click", () => {
+          enterEditMode(btn);
+        });
+      });
+
+      cancelEditBtn.addEventListener("click", () => {
+        exitEditMode();
+      });
+    })();
+  </script>
+{% endblock %}

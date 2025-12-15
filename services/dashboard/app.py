@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import os
 from datetime import datetime, timedelta
@@ -5,7 +7,16 @@ from types import SimpleNamespace
 from urllib import error as urlerror
 from urllib import request as urlrequest
 
-from flask import Flask, abort, jsonify, render_template, request
+from flask import (
+    Flask,
+    Response,
+    abort,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    url_for,
+)
 from sqlalchemy import distinct, func
 from sqlalchemy.orm import scoped_session, sessionmaker
 
@@ -17,7 +28,9 @@ from common.models import (
     EventTypeEnum,
     Lesson,
     LessonMetrics,
+    ScheduleSlot,
     Student,
+    Teacher,
 )
 
 
@@ -31,9 +44,8 @@ SessionLocal = scoped_session(
 app = Flask(__name__)
 
 AI_USE_RECOMMENDER = os.getenv("AI_USE_RECOMMENDER", "false").lower() == "true"
+# На данный момент поддерживается только Gemini как AI-провайдер.
 AI_PROVIDER = os.getenv("AI_PROVIDER", "gemini").lower()
-YANDEX_GPT_API_KEY = os.getenv("YANDEX_GPT_API_KEY")
-YANDEX_GPT_FOLDER_ID = os.getenv("YANDEX_GPT_FOLDER_ID")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
@@ -81,8 +93,8 @@ def _get_student_status(last_seen_at: datetime | None) -> tuple[str, str, str]:
 def _format_dt_short(value: datetime | None) -> str | None:
     if value is None:
         return None
-    text = value.strftime("%Y-%m-%d %H:%M:%S.%f")
-    return text[:-4]
+    # Округляем отображение до секунд, без миллисекунд
+    return value.strftime("%Y-%m-%d %H:%M:%S")
 
 
 @app.teardown_appcontext
@@ -104,6 +116,8 @@ def index():
             db, course.id, start_at
         )
 
+        rate = completion_rate or 0
+
         courses.append(
             {
                 "id": course.id,
@@ -111,6 +125,8 @@ def index():
                 "total_students": total_students,
                 "completed_students": completed_students,
                 "completion_rate": completion_rate,
+                "problem_course": rate < 50,
+                "inactive_30d": False,
             }
         )
 
@@ -160,20 +176,27 @@ def index():
 
         display_name = external_id or _mask_email(email) or str(student_id)
 
+        days_since_last_visit: int | None = None
+        if last_seen is not None:
+            days_since_last_visit = (datetime.utcnow() - last_seen).days
+
         risk_students.append(
             {
                 "id": student_id,
                 "display_name": display_name,
                 "email": email,
                 "last_seen_at": _format_dt_short(last_seen),
+                "days_since_last_visit": days_since_last_visit,
                 "status_label": status_label,
                 "status_code": status_code,
                 "status_badge_color": status_badge_color,
             }
         )
 
+    # Сначала показываем тех, кто дольше всего не заходил
     risk_students.sort(
-        key=lambda s: (s["last_seen_at"] or ""),
+        key=lambda s: (s["days_since_last_visit"] or -1),
+        reverse=True,
     )
     risk_students = risk_students[:5]
 
@@ -205,13 +228,14 @@ def index():
         db.query(
             Lesson.id,
             Lesson.title,
+            Course.id.label("course_id"),
             Course.title.label("course_title"),
         )
         .join(Course, Lesson.course_id == Course.id)
         .all()
     )
 
-    for lesson_id, lesson_title, course_title in lesson_rows:
+    for lesson_id, lesson_title, course_id, course_title in lesson_rows:
         started_students, completed_lesson_students = _calculate_lesson_metrics_for_period(
             db, lesson_id, start_at
         )
@@ -225,6 +249,7 @@ def index():
         behavior_difficult_lessons.append(
             {
                 "lesson_id": lesson_id,
+                "course_id": course_id,
                 "course_title": course_title,
                 "lesson_title": lesson_title,
                 "started_students": started_students,
@@ -236,6 +261,7 @@ def index():
         behavior_popular_lessons.append(
             {
                 "lesson_id": lesson_id,
+                "course_id": course_id,
                 "course_title": course_title,
                 "lesson_title": lesson_title,
                 "started_students": started_students,
@@ -267,6 +293,81 @@ def index():
 
     ai_recommendations: list[str] = []
 
+    # Обзор преподавателей и расписания для директора
+    total_teachers = db.query(func.count(Teacher.id)).scalar() or 0
+
+    today = datetime.utcnow().date()
+    schedule_start = datetime.combine(today, datetime.min.time())
+    schedule_end = schedule_start + timedelta(days=7)
+
+    upcoming_slots_query = db.query(ScheduleSlot).filter(
+        ScheduleSlot.start_at >= schedule_start,
+        ScheduleSlot.start_at < schedule_end,
+    )
+
+    upcoming_slots_count = upcoming_slots_query.count()
+
+    active_teachers_7d = (
+        db.query(func.count(distinct(ScheduleSlot.teacher_id)))
+        .filter(
+            ScheduleSlot.start_at >= schedule_start,
+            ScheduleSlot.start_at < schedule_end,
+        )
+        .scalar()
+        or 0
+    )
+
+    upcoming_slots_raw: list[ScheduleSlot] = (
+        upcoming_slots_query.order_by(ScheduleSlot.start_at.asc()).limit(5).all()
+    )
+
+    upcoming_slots: list[dict] = []
+    for slot in upcoming_slots_raw:
+        start = slot.start_at
+        end = slot.end_at
+        course = slot.course
+        lesson = slot.lesson
+        teacher = slot.teacher
+
+        upcoming_slots.append(
+            {
+                "id": slot.id,
+                "teacher_id": slot.teacher_id,
+                "start_dt": start,
+                "start_date": start.date().isoformat(),
+                "start_time": start.strftime("%H:%M"),
+                "end_time": end.strftime("%H:%M") if end else None,
+                "course_title": course.title if course else "?",
+                "lesson_title": lesson.title if lesson else None,
+                "teacher_name": teacher.name if teacher else "?",
+                "group_name": slot.group_name,
+                "location": slot.location,
+            }
+        )
+
+    # Дополнительные KPI под директора
+    problem_courses_count = len(
+        [c for c in courses if (c.get("completion_rate") or 0) < 50]
+    )
+    risk_students_count = len(risk_students)
+
+    active_course_ids_30d = set(
+        row[0]
+        for row in db.query(distinct(Event.course_id))
+        .filter(
+            Event.occurred_at >= datetime.utcnow() - timedelta(days=30),
+            Event.course_id.isnot(None),
+        )
+        .all()
+        if row[0] is not None
+    )
+    for c in courses:
+        c["inactive_30d"] = c["id"] not in active_course_ids_30d
+
+    inactive_courses_30d_count = len(
+        [c for c in courses if c["inactive_30d"]]
+    )
+
     return render_template(
         "index.html",
         courses=courses,
@@ -285,8 +386,210 @@ def index():
         behavior_difficult_lessons=behavior_difficult_lessons,
         behavior_popular_lessons=behavior_popular_lessons,
         progress_distribution=progress_distribution,
+        problem_courses_count=problem_courses_count,
+        risk_students_count=risk_students_count,
+        inactive_courses_30d_count=inactive_courses_30d_count,
+        total_teachers=total_teachers,
+        active_teachers_7d=active_teachers_7d,
+        upcoming_slots=upcoming_slots,
+        upcoming_slots_count=upcoming_slots_count,
         period=period,
         period_label=period_label,
+    )
+
+
+@app.route("/teachers/<int:teacher_id>")
+def teacher_detail(teacher_id: int):
+    db = SessionLocal()
+
+    teacher = db.query(Teacher).filter(Teacher.id == teacher_id).one_or_none()
+    if teacher is None:
+        abort(404)
+
+    filters = _get_schedule_filters()
+
+    slots: list[ScheduleSlot] = (
+        db.query(ScheduleSlot)
+        .filter(
+            ScheduleSlot.teacher_id == teacher.id,
+            ScheduleSlot.start_at >= filters.start_dt,
+            ScheduleSlot.start_at < filters.end_dt,
+        )
+        .order_by(ScheduleSlot.start_at.asc())
+        .all()
+    )
+
+    slots_count = len(slots)
+    course_ids = {slot.course_id for slot in slots if slot.course_id is not None}
+
+    total_hours = 0.0
+    for slot in slots:
+        start = slot.start_at
+        end = slot.end_at or (slot.start_at + timedelta(hours=1))
+        total_hours += max((end - start).total_seconds() / 3600.0, 0.0)
+
+    first_slot_date: str | None = None
+    last_slot_date: str | None = None
+    if slots:
+        first_slot_date = slots[0].start_at.date().isoformat()
+        last_slot_date = slots[-1].start_at.date().isoformat()
+
+    schedule_rows: list[dict] = []
+    for slot in slots:
+        start = slot.start_at
+        end = slot.end_at
+        course = slot.course
+        lesson = slot.lesson
+
+        schedule_rows.append(
+            {
+                "id": slot.id,
+                "start_date": start.date().isoformat(),
+                "start_time": start.strftime("%H:%M"),
+                "end_time": end.strftime("%H:%M") if end else None,
+                "course_title": course.title if course else "?",
+                "lesson_title": lesson.title if lesson else None,
+                "group_name": slot.group_name,
+                "location": slot.location,
+            }
+        )
+
+    schedule_by_date: dict[str, list[dict]] = {}
+    for row in schedule_rows:
+        date_key = row["start_date"]
+        schedule_by_date.setdefault(date_key, []).append(row)
+
+    schedule_dates = sorted(schedule_by_date.keys())
+
+    # KPI и список проблемных курсов преподавателя за период
+    teacher_problem_courses: list[dict] = []
+    teacher_courses_stats: list[dict] = []
+    teacher_total_students = 0
+    teacher_completed_students = 0
+    if course_ids:
+        for course in (
+            db.query(Course)
+            .filter(Course.id.in_(course_ids))
+            .order_by(Course.title)
+            .all()
+        ):
+            total_students, completed_students, completion_rate = _calculate_course_metrics_for_period(  # noqa: E501
+                db, course.id, filters.start_dt
+            )
+            rate = completion_rate or 0
+
+            stat = {
+                "id": course.id,
+                "title": course.title,
+                "total_students": total_students,
+                "completed_students": completed_students,
+                "completion_rate": rate,
+            }
+            teacher_courses_stats.append(stat)
+
+            teacher_total_students += total_students
+            teacher_completed_students += completed_students
+
+            if rate < 50:
+                teacher_problem_courses.append(stat)
+
+    teacher_avg_completion_rate = (
+        int(teacher_completed_students / teacher_total_students * 100)
+        if teacher_total_students
+        else 0
+    )
+
+    metrics = SimpleNamespace(
+        slots_count=slots_count,
+        courses_count=len(course_ids),
+        total_hours=int(round(total_hours)),
+        first_slot_date=first_slot_date,
+        last_slot_date=last_slot_date,
+        problem_courses_count=len(teacher_problem_courses),
+        students_total=teacher_total_students,
+        students_completed=teacher_completed_students,
+        avg_completion_rate=teacher_avg_completion_rate,
+    )
+
+    # Простые текстовые инсайты по преподавателю
+    teacher_insights: list[str] = []
+
+    if teacher_total_students == 0:
+        teacher_insights.append(
+            "В выбранном периоде у преподавателя нет студентов — можно планировать для него дополнительные занятия."
+        )
+    else:
+        if teacher_avg_completion_rate >= 80:
+            teacher_insights.append(
+                "Высокий средний процент завершения курсов у студентов этого преподавателя."
+            )
+        elif teacher_avg_completion_rate >= 50:
+            teacher_insights.append(
+                "Средний процент завершения курсов на уровне нормы."
+            )
+        else:
+            teacher_insights.append(
+                "Низкий средний процент завершения курсов — стоит проверить содержание материалов и поддержку студентов."
+            )
+
+        if len(teacher_problem_courses) == 0 and course_ids:
+            teacher_insights.append(
+                "В выбранном периоде нет проблемных курсов (ниже 50% завершения) по этому преподавателю."
+            )
+        elif len(teacher_problem_courses) == 1:
+            teacher_insights.append(
+                "Есть 1 проблемный курс с низкой завершённостью — имеет смысл уделить ему особое внимание."
+            )
+        elif len(teacher_problem_courses) > 1:
+            teacher_insights.append(
+                f"Есть {len(teacher_problem_courses)} проблемных курса с низкой завершённостью — приоритизируйте их улучшение."
+            )
+
+        if metrics.slots_count <= 3 and metrics.courses_count <= 1:
+            teacher_insights.append(
+                "Низкая нагрузка по занятиям — можно рассмотреть увеличение числа групп или курсов."
+            )
+        elif metrics.slots_count >= 15:
+            teacher_insights.append(
+                "Высокая нагрузка по занятиям — при планировании стоит учитывать возможное выгорание."
+            )
+
+    # Навигация по периоду (шагами по 7 дней)
+    try:
+        current_start = datetime.strptime(filters.start_date_str, "%Y-%m-%d").date()
+        current_end = datetime.strptime(filters.end_date_str, "%Y-%m-%d").date()
+    except ValueError:
+        current_start = datetime.utcnow().date()
+        current_end = current_start
+
+    prev_start = (current_start - timedelta(days=7)).isoformat()
+    prev_end = (current_end - timedelta(days=7)).isoformat()
+    next_start = (current_start + timedelta(days=7)).isoformat()
+    next_end = (current_end + timedelta(days=7)).isoformat()
+
+    period_nav = SimpleNamespace(
+        prev_start=prev_start,
+        prev_end=prev_end,
+        next_start=next_start,
+        next_end=next_end,
+    )
+
+    return render_template(
+        "teacher_detail.html",
+        teacher=teacher,
+        filters=filters,
+        metrics=metrics,
+        period_nav=period_nav,
+        teacher_courses_stats=teacher_courses_stats,
+        teacher_courses_labels=[c["title"] for c in teacher_courses_stats],
+        teacher_courses_completion_rates=[
+            c["completion_rate"] for c in teacher_courses_stats
+        ],
+        teacher_problem_courses=teacher_problem_courses,
+        teacher_insights=teacher_insights,
+        schedule_rows=schedule_rows,
+        schedule_by_date=schedule_by_date,
+        schedule_dates=schedule_dates,
     )
 
 
@@ -677,6 +980,100 @@ def students_list():
     )
 
 
+@app.route("/teachers")
+def teachers_list():
+    """Список преподавателей и их нагрузка за выбранный период.
+
+    Используем те же фильтры дат, что и для расписания (см. _get_schedule_filters).
+    """
+
+    db = SessionLocal()
+
+    filters = _get_schedule_filters()
+
+    teachers = db.query(Teacher).order_by(Teacher.name).all()
+
+    teacher_rows: list[dict] = []
+
+    for teacher in teachers:
+        slots: list[ScheduleSlot] = (
+            db.query(ScheduleSlot)
+            .filter(
+                ScheduleSlot.teacher_id == teacher.id,
+                ScheduleSlot.start_at >= filters.start_dt,
+                ScheduleSlot.start_at < filters.end_dt,
+            )
+            .order_by(ScheduleSlot.start_at.asc())
+            .all()
+        )
+
+        if not slots:
+            # Для директора иногда полезно видеть и преподавателей без слотов,
+            # чтобы понимать, кого можно задействовать.
+            teacher_rows.append(
+                {
+                    "id": teacher.id,
+                    "name": teacher.name,
+                    "email": teacher.email,
+                    "slots_count": 0,
+                    "courses_count": 0,
+                    "total_hours": 0,
+                    "first_slot_date": None,
+                    "last_slot_date": None,
+                    "problem_courses_count": 0,
+                }
+            )
+            continue
+
+        slots_count = len(slots)
+        course_ids = {slot.course_id for slot in slots if slot.course_id is not None}
+
+        total_hours = 0.0
+        for slot in slots:
+            start = slot.start_at
+            end = slot.end_at or (slot.start_at + timedelta(hours=1))
+            total_hours += max((end - start).total_seconds() / 3600.0, 0.0)
+
+        first_slot = slots[0].start_at
+        last_slot = slots[-1].start_at
+
+        # Проблемные курсы конкретного преподавателя (по данному периоду)
+        problem_courses_count = 0
+        if course_ids:
+            for course in (
+                db.query(Course)
+                .filter(Course.id.in_(course_ids))
+                .order_by(Course.title)
+                .all()
+            ):
+                _total_students, _completed_students, completion_rate = _calculate_course_metrics_for_period(  # noqa: E501
+                    db, course.id, filters.start_dt
+                )
+                rate = completion_rate or 0
+                if rate < 50:
+                    problem_courses_count += 1
+
+        teacher_rows.append(
+            {
+                "id": teacher.id,
+                "name": teacher.name,
+                "email": teacher.email,
+                "slots_count": slots_count,
+                "courses_count": len(course_ids),
+                "total_hours": int(round(total_hours)),
+                "first_slot_date": first_slot.date().isoformat(),
+                "last_slot_date": last_slot.date().isoformat(),
+                "problem_courses_count": problem_courses_count,
+            }
+        )
+
+    return render_template(
+        "teachers_list.html",
+        teachers=teacher_rows,
+        filters=filters,
+    )
+
+
 @app.route("/behavior")
 def behavior_overview():
     db = SessionLocal()
@@ -722,6 +1119,7 @@ def behavior_overview():
         db.query(
             Lesson.id,
             Lesson.title,
+            Course.id.label("course_id"),
             Course.title.label("course_title"),
         )
         .join(Course, Lesson.course_id == Course.id)
@@ -730,7 +1128,7 @@ def behavior_overview():
     )
 
     lessons_all: list[dict] = []
-    for lesson_id, lesson_title, course_title in lesson_rows:
+    for lesson_id, lesson_title, course_id, course_title in lesson_rows:
         started_students, completed_lesson_students = _calculate_lesson_metrics_for_period(
             db, lesson_id, start_at
         )
@@ -751,6 +1149,7 @@ def behavior_overview():
         lessons_all.append(
             {
                 "lesson_id": lesson_id,
+                "course_id": course_id,
                 "course_title": course_title,
                 "lesson_title": lesson_title,
                 "started_students": started_students,
@@ -775,6 +1174,360 @@ def behavior_overview():
         difficult_lessons=difficult_lessons,
         courses_for_progress=courses,
         progress_distribution=progress_distribution,
+    )
+
+
+@app.route("/schedule")
+def schedule_view():
+    """Просмотр расписания занятий.
+
+    Для MVP отображаем список слотов с фильтрами по дате, курсу и преподавателю.
+    """
+
+    db = SessionLocal()
+
+    filters = _get_schedule_filters()
+
+    query = (
+        db.query(ScheduleSlot)
+        .filter(
+            ScheduleSlot.start_at >= filters.start_dt,
+            ScheduleSlot.start_at < filters.end_dt,
+        )
+        .order_by(ScheduleSlot.start_at.asc())
+    )
+
+    if filters.teacher_id is not None:
+        query = query.filter(ScheduleSlot.teacher_id == filters.teacher_id)
+    if filters.course_id is not None:
+        query = query.filter(ScheduleSlot.course_id == filters.course_id)
+
+    slots: list[ScheduleSlot] = query.all()
+
+    # Определяем конфликты по преподавателям: слоты, которые пересекаются по времени.
+    conflict_slot_ids: set[int] = set()
+    slots_by_teacher: dict[int, list[ScheduleSlot]] = {}
+    for slot in slots:
+        if slot.teacher_id is None:
+            continue
+        slots_by_teacher.setdefault(slot.teacher_id, []).append(slot)
+
+    for teacher_id, teacher_slots in slots_by_teacher.items():
+        teacher_slots.sort(key=lambda s: s.start_at)
+        for i, current in enumerate(teacher_slots[:-1]):
+            next_slot = teacher_slots[i + 1]
+            current_end = current.end_at or (current.start_at + timedelta(hours=1))
+            next_start = next_slot.start_at
+            if next_start < current_end:
+                conflict_slot_ids.add(current.id)
+                conflict_slot_ids.add(next_slot.id)
+
+    teachers = db.query(Teacher).order_by(Teacher.name).all()
+    courses = db.query(Course).order_by(Course.title).all()
+
+    # Список уроков для выпадающего списка (опционально при создании слота)
+    lesson_rows = (
+        db.query(
+            Lesson.id,
+            Lesson.title,
+            Lesson.course_id,
+            Course.title.label("course_title"),
+        )
+        .join(Course, Lesson.course_id == Course.id)
+        .order_by(Course.title, Lesson.position.nulls_last(), Lesson.id)
+        .all()
+    )
+
+    lessons: list[dict] = []
+    for lesson_id, lesson_title, course_id, course_title in lesson_rows:
+        lessons.append(
+            {
+                "id": lesson_id,
+                "title": lesson_title,
+                "course_id": course_id,
+                "course_title": course_title,
+            }
+        )
+
+    schedule_rows: list[dict] = []
+    for slot in slots:
+        start = slot.start_at
+        end = slot.end_at
+        course = slot.course
+        lesson = slot.lesson
+        teacher = slot.teacher
+
+        schedule_rows.append(
+            {
+                "id": slot.id,
+                "course_id": slot.course_id,
+                "lesson_id": slot.lesson_id,
+                "teacher_id": slot.teacher_id,
+                "start_dt": start,
+                "start_date": start.date().isoformat(),
+                "start_time": start.strftime("%H:%M"),
+                "end_time": end.strftime("%H:%M") if end else None,
+                "course_title": course.title if course else "?",
+                "lesson_title": lesson.title if lesson else None,
+                "teacher_name": teacher.name if teacher else "?",
+                "group_name": slot.group_name,
+                "location": slot.location,
+                "has_conflict": slot.id in conflict_slot_ids,
+            }
+        )
+
+    # Подготовка данных для календарного вида по дням
+    schedule_by_date: dict[str, list[dict]] = {}
+    for row in schedule_rows:
+        date_key = row["start_date"]
+        schedule_by_date.setdefault(date_key, []).append(row)
+
+    ordered_dates = sorted(schedule_by_date.keys())
+
+    return render_template(
+        "schedule.html",
+        schedule_rows=schedule_rows,
+        teachers=teachers,
+        courses=courses,
+        lessons=lessons,
+        schedule_by_date=schedule_by_date,
+        schedule_dates=ordered_dates,
+        filters=filters,
+    )
+
+
+@app.route("/schedule/new", methods=["POST"])
+def schedule_create():
+    """Создать новый слот расписания из формы на странице расписания."""
+
+    db = SessionLocal()
+
+    form = request.form
+
+    date_str = form.get("date")
+    start_time_str = form.get("start_time")
+    end_time_str = form.get("end_time")
+    course_id_str = form.get("course_id")
+    teacher_id_str = form.get("teacher_id")
+    lesson_id_str = form.get("lesson_id")
+    group_name = form.get("group_name") or None
+    location = form.get("location") or None
+
+    try:
+        course_id = int(course_id_str) if course_id_str is not None else None
+        teacher_id = int(teacher_id_str) if teacher_id_str is not None else None
+        lesson_id = int(lesson_id_str) if lesson_id_str else None
+    except (TypeError, ValueError):
+        return redirect(url_for("schedule_view"))
+
+    if not course_id or not teacher_id or not date_str or not start_time_str:
+        return redirect(url_for("schedule_view"))
+
+    try:
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+        start_time_obj = datetime.strptime(start_time_str, "%H:%M").time()
+        end_time_obj = (
+            datetime.strptime(end_time_str, "%H:%M").time()
+            if end_time_str
+            else None
+        )
+    except ValueError:
+        return redirect(url_for("schedule_view"))
+
+    start_at = datetime.combine(date_obj, start_time_obj)
+    end_at = datetime.combine(date_obj, end_time_obj) if end_time_obj else None
+
+    slot = ScheduleSlot(
+        course_id=course_id,
+        lesson_id=lesson_id,
+        teacher_id=teacher_id,
+        start_at=start_at,
+        end_at=end_at,
+        group_name=group_name,
+        location=location,
+    )
+
+    db.add(slot)
+    db.commit()
+
+    return redirect(
+        url_for(
+            "schedule_view",
+            start=date_obj.isoformat(),
+            end=date_obj.isoformat(),
+            course_id=course_id,
+            teacher_id=teacher_id,
+        )
+    )
+
+
+@app.route("/schedule/<int:slot_id>/delete", methods=["POST"])
+def schedule_delete(slot_id: int):
+    db = SessionLocal()
+
+    slot = (
+        db.query(ScheduleSlot)
+        .filter(ScheduleSlot.id == slot_id)
+        .one_or_none()
+    )
+    if slot is None:
+        return redirect(url_for("schedule_view"))
+
+    start_date = slot.start_at.date().isoformat()
+    course_id = slot.course_id
+    teacher_id = slot.teacher_id
+
+    db.delete(slot)
+    db.commit()
+
+    return redirect(
+        url_for(
+            "schedule_view",
+            start=start_date,
+            end=start_date,
+            course_id=course_id,
+            teacher_id=teacher_id,
+        )
+    )
+
+
+@app.route("/schedule/<int:slot_id>/edit", methods=["POST"])
+def schedule_edit(slot_id: int):
+    """Обновление существующего слота расписания из формы."""
+
+    db = SessionLocal()
+
+    slot = (
+        db.query(ScheduleSlot)
+        .filter(ScheduleSlot.id == slot_id)
+        .one_or_none()
+    )
+    if slot is None:
+        return redirect(url_for("schedule_view"))
+
+    form = request.form
+
+    date_str = form.get("date")
+    start_time_str = form.get("start_time")
+    end_time_str = form.get("end_time")
+    course_id_str = form.get("course_id")
+    teacher_id_str = form.get("teacher_id")
+    lesson_id_str = form.get("lesson_id")
+    group_name = form.get("group_name") or None
+    location = form.get("location") or None
+
+    try:
+        course_id = int(course_id_str) if course_id_str is not None else None
+        teacher_id = int(teacher_id_str) if teacher_id_str is not None else None
+        lesson_id = int(lesson_id_str) if lesson_id_str else None
+    except (TypeError, ValueError):
+        return redirect(url_for("schedule_view"))
+
+    if not course_id or not teacher_id or not date_str or not start_time_str:
+        return redirect(url_for("schedule_view"))
+
+    try:
+        date_obj = datetime.strptime(date_str, "%Y-%m-%d").date()
+        start_time_obj = datetime.strptime(start_time_str, "%H:%M").time()
+        end_time_obj = (
+            datetime.strptime(end_time_str, "%H:%M").time()
+            if end_time_str
+            else None
+        )
+    except ValueError:
+        return redirect(url_for("schedule_view"))
+
+    slot.course_id = course_id
+    slot.teacher_id = teacher_id
+    slot.lesson_id = lesson_id
+    slot.start_at = datetime.combine(date_obj, start_time_obj)
+    slot.end_at = datetime.combine(date_obj, end_time_obj) if end_time_obj else None
+    slot.group_name = group_name
+    slot.location = location
+
+    db.commit()
+
+    return redirect(
+        url_for(
+            "schedule_view",
+            start=date_obj.isoformat(),
+            end=date_obj.isoformat(),
+            course_id=course_id,
+            teacher_id=teacher_id,
+        )
+    )
+
+
+@app.route("/schedule/export")
+def schedule_export():
+    """Экспорт расписания в CSV-файл (удобно открывать в Excel)."""
+
+    db = SessionLocal()
+    filters = _get_schedule_filters()
+
+    query = (
+        db.query(ScheduleSlot)
+        .filter(
+            ScheduleSlot.start_at >= filters.start_dt,
+            ScheduleSlot.start_at < filters.end_dt,
+        )
+        .order_by(ScheduleSlot.start_at.asc())
+    )
+
+    if filters.teacher_id is not None:
+        query = query.filter(ScheduleSlot.teacher_id == filters.teacher_id)
+    if filters.course_id is not None:
+        query = query.filter(ScheduleSlot.course_id == filters.course_id)
+
+    slots: list[ScheduleSlot] = query.all()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow(
+        [
+            "ID",
+            "Дата",
+            "Время начала",
+            "Время окончания",
+            "Курс",
+            "Урок",
+            "Преподаватель",
+            "Группа",
+            "Локация",
+        ]
+    )
+
+    for slot in slots:
+        start = slot.start_at
+        end = slot.end_at
+        course = slot.course
+        lesson = slot.lesson
+        teacher = slot.teacher
+
+        writer.writerow(
+            [
+                slot.id,
+                start.date().isoformat(),
+                start.strftime("%H:%M"),
+                end.strftime("%H:%M") if end else "",
+                course.title if course else "",
+                lesson.title if lesson else "",
+                teacher.name if teacher else "",
+                slot.group_name or "",
+                slot.location or "",
+            ]
+        )
+
+    csv_text = output.getvalue()
+    output.close()
+
+    filename = f"schedule_{filters.start_date_str}_to_{filters.end_date_str}.csv"
+
+    return Response(
+        csv_text,
+        mimetype="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
 
@@ -817,16 +1570,19 @@ def api_ai_recommendations():
     if not courses or total_students_all == 0:
         return jsonify(status="no_data", items=[])
 
-    items = _get_index_ai_recommendations(
-        period=period,
-        courses=courses,
-        total_students_all=total_students_all,
-        completed_students_all=completed_students_all,
-        overall_completion_rate=overall_completion_rate,
-    )
-
-    status = "ok" if items else "empty"
-    return jsonify(status=status, items=items)
+    try:
+        items = _get_index_ai_recommendations(
+            period=period,
+            courses=courses,
+            total_students_all=total_students_all,
+            completed_students_all=completed_students_all,
+            overall_completion_rate=overall_completion_rate,
+        )
+        status = "ok" if items else "empty"
+        return jsonify(status=status, items=items)
+    except Exception as exc:  # защитный лог на случай неожиданных ошибок
+        print(f"[AI] /api/ai-recommendations error: {exc}")
+        return jsonify(status="error", items=[])
 
 
 @app.route("/api/student-ai-insights", methods=["POST"])
@@ -858,16 +1614,20 @@ def api_student_ai_insights():
     if not isinstance(courses, list):
         courses = []
 
-    items = _get_student_ai_insights(
-        display_name=display_name,
-        status_code=status_code,
-        overall_progress=overall_progress,
-        days_since_last_visit=days_since_last_visit,
-        courses=courses,
-    )
+    try:
+        items = _get_student_ai_insights(
+            display_name=display_name,
+            status_code=status_code,
+            overall_progress=overall_progress,
+            days_since_last_visit=days_since_last_visit,
+            courses=courses,
+        )
 
-    status = "ok" if items else "empty"
-    return jsonify(status=status, items=items)
+        status = "ok" if items else "empty"
+        return jsonify(status=status, items=items)
+    except Exception as exc:
+        print(f"[AI] /api/student-ai-insights error: {exc}")
+        return jsonify(status="error", items=[])
 
 
 def _get_period() -> tuple[str, datetime | None, str]:
@@ -942,6 +1702,62 @@ def _calculate_lesson_metrics_for_period(
     return started_students, completed_students
 
 
+def _get_schedule_filters() -> SimpleNamespace:
+    """Получить параметры фильтрации расписания из query-параметров.
+
+    Используем диапазон дат (start/end), а также опциональные фильтры по
+    преподавателю и курсу. По умолчанию показываем промежуток ±7 дней от
+    текущей даты.
+    """
+
+    teacher_param = request.args.get("teacher_id")
+    course_param = request.args.get("course_id")
+    start_str = request.args.get("start")
+    end_str = request.args.get("end")
+
+    now = datetime.utcnow()
+    default_start_date = (now - timedelta(days=7)).date()
+    default_end_date = (now + timedelta(days=7)).date()
+
+    def _parse_date(value: str | None, default_date: datetime.date) -> datetime.date:  # type: ignore[name-defined]
+        if not value:
+            return default_date
+        try:
+            return datetime.strptime(value, "%Y-%m-%d").date()
+        except ValueError:
+            return default_date
+
+    start_date = _parse_date(start_str, default_start_date)
+    end_date = _parse_date(end_str, default_end_date)
+
+    # Диапазон по времени: [start_dt, end_dt)
+    start_dt = datetime.combine(start_date, datetime.min.time())
+    end_dt = datetime.combine(end_date + timedelta(days=1), datetime.min.time())
+
+    teacher_id: int | None = None
+    if teacher_param:
+        try:
+            teacher_id = int(teacher_param)
+        except ValueError:
+            teacher_id = None
+
+    course_id: int | None = None
+    if course_param:
+        try:
+            course_id = int(course_param)
+        except ValueError:
+            course_id = None
+
+    return SimpleNamespace(
+        start_dt=start_dt,
+        end_dt=end_dt,
+        start_date_str=start_date.isoformat(),
+        end_date_str=end_date.isoformat(),
+        teacher_id=teacher_id,
+        course_id=course_id,
+    )
+
+
 def _get_index_ai_recommendations(
     *,
     period: str,
@@ -951,13 +1767,12 @@ def _get_index_ai_recommendations(
     overall_completion_rate: int,
 ) -> list[str]:
     provider = AI_PROVIDER
-    if provider == "yandexgpt":
-        if not YANDEX_GPT_API_KEY or not YANDEX_GPT_FOLDER_ID:
-            return []
-    elif provider == "gemini":
-        if not GEMINI_API_KEY:
-            return []
-    else:
+    if provider != "gemini":
+        print(f"[AI] Unknown AI_PROVIDER: {provider}")
+        return []
+
+    if not GEMINI_API_KEY:
+        print("[AI] Gemini disabled: missing GEMINI_API_KEY")
         return []
 
     lines: list[str] = []
@@ -977,14 +1792,14 @@ def _get_index_ai_recommendations(
         "Ты опытный продуктовый аналитик онлайн-курсов. На основе переданных метрик по всем курсам предложи 3–5 конкретных рекомендаций по улучшению программ обучения и структуры курсов. Пиши кратко, на русском языке, в формате списка без лишних пояснений."
     )
 
-    if provider == "yandexgpt":
-        text = _call_yandex_gpt(system_text=system_text, user_text=prompt)
-    elif provider == "gemini":
-        text = _call_gemini(system_text=system_text, user_text=prompt)
-    else:
-        return []
+    # На текущем этапе поддерживаем только Gemini
+    text = _call_gemini(system_text=system_text, user_text=prompt)
+
+    # Если провайдер вернул None или пустую строку, считаем это ошибкой, чтобы
+    # роут /api/ai-recommendations отдал status="error", а не "empty".
     if not text:
-        return []
+        print("[AI] _get_index_ai_recommendations: model returned empty text")
+        raise RuntimeError("AI provider returned empty text")
 
     recommendations: list[str] = []
     for line in text.splitlines():
@@ -1009,13 +1824,12 @@ def _get_student_ai_insights(
     courses: list[dict],
 ) -> list[str]:
     provider = AI_PROVIDER
-    if provider == "yandexgpt":
-        if not YANDEX_GPT_API_KEY or not YANDEX_GPT_FOLDER_ID:
-            return []
-    elif provider == "gemini":
-        if not GEMINI_API_KEY:
-            return []
-    else:
+    if provider != "gemini":
+        print(f"[AI] Unknown AI_PROVIDER: {provider}")
+        return []
+
+    if not GEMINI_API_KEY:
+        print("[AI] Gemini disabled: missing GEMINI_API_KEY")
         return []
 
     lines: list[str] = []
@@ -1041,14 +1855,14 @@ def _get_student_ai_insights(
         "Ты методист онлайн-курсов. По данным об одном студенте оцени риск недозавершения обучения и предложи 3–5 конкретных рекомендаций, как куратор может помочь этому студенту (что написать, какие материалы предложить, где упростить). Пиши кратко, на русском языке, в формате списка без лишних пояснений."
     )
 
-    if provider == "yandexgpt":
-        text = _call_yandex_gpt(system_text=system_text, user_text=prompt)
-    elif provider == "gemini":
-        text = _call_gemini(system_text=system_text, user_text=prompt)
-    else:
-        return []
+    # На текущем этапе поддерживаем только Gemini
+    text = _call_gemini(system_text=system_text, user_text=prompt)
+
+    # Аналогично индексу: отсутствие текста от провайдера считаем ошибкой,
+    # чтобы /api/student-ai-insights вернул status="error".
     if not text:
-        return []
+        print("[AI] _get_student_ai_insights: model returned empty text")
+        raise RuntimeError("AI provider returned empty text")
 
     recommendations: list[str] = []
     for line in text.splitlines():
@@ -1062,64 +1876,6 @@ def _get_student_ai_insights(
         recommendations.append(stripped)
 
     return recommendations
-
-
-def _call_yandex_gpt(*, system_text: str, user_text: str) -> str | None:
-    url = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Api-Key {YANDEX_GPT_API_KEY}",
-    }
-
-    body = {
-        "modelUri": f"gpt://{YANDEX_GPT_FOLDER_ID}/yandexgpt-lite",
-        "completionOptions": {
-            "stream": False,
-            "temperature": 0.2,
-            "maxTokens": "800",
-        },
-        "messages": [
-            {"role": "system", "text": system_text},
-            {"role": "user", "text": user_text},
-        ],
-    }
-
-    data = json.dumps(body).encode("utf-8")
-
-    request_obj = urlrequest.Request(url=url, data=data, headers=headers, method="POST")
-    try:
-        with urlrequest.urlopen(request_obj, timeout=15) as response:
-            response_text = response.read().decode("utf-8")
-    except urlerror.URLError:
-        return None
-
-    try:
-        payload = json.loads(response_text)
-    except json.JSONDecodeError:
-        return None
-
-    result = payload.get("result")
-    if not isinstance(result, dict):
-        return None
-
-    alternatives = result.get("alternatives")
-    if not isinstance(alternatives, list) or not alternatives:
-        return None
-
-    first = alternatives[0]
-    if not isinstance(first, dict):
-        return None
-
-    message = first.get("message")
-    if not isinstance(message, dict):
-        return None
-
-    text = message.get("text")
-    if not isinstance(text, str):
-        return None
-
-    return text
 
 
 def _call_gemini(*, system_text: str, user_text: str) -> str | None:
@@ -1148,38 +1904,55 @@ def _call_gemini(*, system_text: str, user_text: str) -> str | None:
 
     request_obj = urlrequest.Request(url=url, data=data, headers={"Content-Type": "application/json"}, method="POST")
     try:
-        with urlrequest.urlopen(request_obj, timeout=5) as response:
+        # Увеличиваем таймаут, чтобы дать модели время ответить
+        with urlrequest.urlopen(request_obj, timeout=40) as response:
             response_text = response.read().decode("utf-8")
-    except urlerror.URLError:
+    except urlerror.URLError as exc:
+        print(f"[AI] Gemini request error: {exc}")
         return None
 
     try:
         payload = json.loads(response_text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
+        # Логируем, если Gemini вернул невалидный JSON
+        print(
+            f"[AI] Gemini JSON decode error: {exc}; raw={response_text[:400]!r}"
+        )
         return None
 
     candidates = payload.get("candidates")
     if not isinstance(candidates, list) or not candidates:
+        print("[AI] Gemini: empty candidates")
         return None
 
     first = candidates[0]
     if not isinstance(first, dict):
+        print("[AI] Gemini: first candidate is not a dict")
         return None
 
     content = first.get("content")
     if not isinstance(content, dict):
+        print("[AI] Gemini: unexpected content format")
         return None
 
     parts = content.get("parts")
     if not isinstance(parts, list) or not parts:
+        print("[AI] Gemini: empty parts")
         return None
 
     first_part = parts[0]
     if not isinstance(first_part, dict):
+        print("[AI] Gemini: unexpected part format")
         return None
 
     text = first_part.get("text")
     if not isinstance(text, str):
+        print("[AI] Gemini: text is not a string")
         return None
+
+    # Успешный разбор ответа от Gemini
+    print(
+        f"[AI] Gemini: got text of length {len(text)} from model {model}; candidates={len(candidates)}"
+    )
 
     return text

@@ -18,6 +18,8 @@ class Course(Base):
     lessons = relationship("Lesson", back_populates="course")
     events = relationship("Event", back_populates="course")
     metrics = relationship("CourseMetrics", back_populates="course", uselist=False)
+    # Связанные слоты расписания для этого курса
+    schedule_slots = relationship("ScheduleSlot", back_populates="course")
 
 
 class Lesson(Base):
@@ -32,6 +34,8 @@ class Lesson(Base):
     course = relationship("Course", back_populates="lessons")
     events = relationship("Event", back_populates="lesson")
     metrics = relationship("LessonMetrics", back_populates="lesson", uselist=False)
+    # Слоты расписания, в которых проводится этот урок (если привязан)
+    schedule_slots = relationship("ScheduleSlot", back_populates="lesson")
 
     __table_args__ = (
         UniqueConstraint("course_id", "external_id", name="uq_lesson_course_external"),
@@ -97,3 +101,49 @@ class LessonMetrics(Base):
     updated_at = Column(DateTime, nullable=False, default=datetime.utcnow)
 
     lesson = relationship("Lesson", back_populates="metrics")
+
+
+class Teacher(Base):
+    """Преподаватель онлайн-школы.
+
+    Пока минимальный набор полей: имя и email. external_id оставляем для
+    возможной синхронизации с внешней платформой.
+    """
+
+    __tablename__ = "teachers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    external_id = Column(String(255), unique=True, index=True, nullable=True)
+    name = Column(String(255), nullable=False)
+    email = Column(String(255), nullable=True)
+
+    # Слоты расписания, которые ведёт преподаватель
+    schedule_slots = relationship("ScheduleSlot", back_populates="teacher")
+
+
+class ScheduleSlot(Base):
+    """Слот расписания занятия.
+
+    Отражает конкретное занятие в календаре: курс/урок, преподаватель,
+    дата и время, а также опциональные поля для локации и названия группы.
+    """
+
+    __tablename__ = "schedule_slots"
+
+    id = Column(Integer, primary_key=True, index=True)
+    course_id = Column(Integer, ForeignKey("courses.id"), nullable=False, index=True)
+    lesson_id = Column(Integer, ForeignKey("lessons.id"), nullable=True, index=True)
+    teacher_id = Column(Integer, ForeignKey("teachers.id"), nullable=False, index=True)
+
+    start_at = Column(DateTime, nullable=False, index=True)
+    end_at = Column(DateTime, nullable=True)
+
+    # Например: "Zoom", "Офлайн, аудитория 101" или конкретная ссылка
+    location = Column(String(255), nullable=True)
+
+    # Условное название потока/группы без отдельной таблицы групп на данном этапе
+    group_name = Column(String(255), nullable=True)
+
+    course = relationship("Course", back_populates="schedule_slots")
+    lesson = relationship("Lesson", back_populates="schedule_slots")
+    teacher = relationship("Teacher", back_populates="schedule_slots")

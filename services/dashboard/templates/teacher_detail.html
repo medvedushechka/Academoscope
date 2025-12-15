@@ -1,0 +1,367 @@
+{% extends "base.html" %}
+
+{% block title %}{{ teacher.name }} — Academoscope{% endblock %}
+
+{% block content %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-2">
+    <div class="d-flex align-items-center gap-2 mb-2 mb-md-0">
+      <a href="/teachers" class="btn btn-sm acad-back-btn" aria-label="Назад">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span class="visually-hidden">Назад</span>
+      </a>
+      <h1 class="mb-0">
+        {{ teacher.name }}
+      </h1>
+    </div>
+  </div>
+
+  <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+    <p class="text-muted small mb-0">
+      Период расписания: {{ filters.start_date_str }} — {{ filters.end_date_str }}.
+    </p>
+    <div class="btn-group btn-group-sm" role="group" aria-label="Навигация по периоду">
+      <a
+        href="{{ url_for('teacher_detail', teacher_id=teacher.id, start=period_nav.prev_start, end=period_nav.prev_end) }}"
+        class="btn btn-outline-secondary"
+      >
+        −7 дней
+      </a>
+      <a
+        href="{{ url_for('teacher_detail', teacher_id=teacher.id) }}"
+        class="btn btn-outline-secondary"
+      >
+        Сегодня ±7
+      </a>
+      <a
+        href="{{ url_for('teacher_detail', teacher_id=teacher.id, start=period_nav.next_start, end=period_nav.next_end) }}"
+        class="btn btn-outline-secondary"
+      >
+        +7 дней
+      </a>
+    </div>
+  </div>
+
+  <div class="row mb-4" data-aos="fade-up">
+    <div class="col-12 col-md-6 col-xl-3 mb-3">
+      <div class="card metric-card h-100">
+        <div class="card-body text-center">
+          <h6 class="card-subtitle mb-2 text-muted text-uppercase small">
+            Занятий в периоде
+          </h6>
+          <h3 class="card-title mb-0">{{ metrics.slots_count }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3 mb-3">
+      <div class="card metric-card h-100">
+        <div class="card-body text-center">
+          <h6 class="card-subtitle mb-2 text-muted text-uppercase small">
+            Курсов в расписании
+          </h6>
+          <h3 class="card-title mb-0">{{ metrics.courses_count }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3 mb-3">
+      <div class="card metric-card h-100">
+        <div class="card-body text-center">
+          <h6 class="card-subtitle mb-2 text-muted text-uppercase small">
+            Часов в периоде
+          </h6>
+          <h3 class="card-title mb-0">{{ metrics.total_hours }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3 mb-3">
+      <div class="card metric-card h-100">
+        <div class="card-body text-center">
+          <h6 class="card-subtitle mb-2 text-muted text-uppercase small">
+            Диапазон дат
+          </h6>
+          <h3 class="card-title mb-0">
+            {% if metrics.first_slot_date %}
+              {{ metrics.first_slot_date }}
+              <span class="text-muted">—</span>
+              {{ metrics.last_slot_date }}
+            {% else %}
+              —
+            {% endif %}
+          </h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3 mb-3">
+      <div class="card metric-card h-100">
+        <div class="card-body text-center">
+          <h6 class="card-subtitle mb-2 text-muted text-uppercase small">
+            Проблемные курсы
+          </h6>
+          <h3 class="card-title mb-0">{{ metrics.problem_courses_count }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3 mb-3">
+      <div class="card metric-card h-100">
+        <div class="card-body text-center">
+          <h6 class="card-subtitle mb-2 text-muted text-uppercase small">
+            Студентов всего
+          </h6>
+          <h3 class="card-title mb-0">{{ metrics.students_total }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3 mb-3">
+      <div class="card metric-card h-100">
+        <div class="card-body text-center">
+          <h6 class="card-subtitle mb-2 text-muted text-uppercase small">
+            Завершили курс(ы)
+          </h6>
+          <h3 class="card-title mb-0">{{ metrics.students_completed }}</h3>
+        </div>
+      </div>
+    </div>
+    <div class="col-12 col-md-6 col-xl-3 mb-3">
+      <div class="card metric-card h-100">
+        <div class="card-body text-center">
+          <h6 class="card-subtitle mb-2 text-muted text-uppercase small">
+            Средний % завершения
+          </h6>
+          <h3 class="card-title mb-0">{{ metrics.avg_completion_rate }}%</h3>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  {% if teacher_insights %}
+    <div class="mb-4" data-aos="fade-up">
+      <div class="card metric-card">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Инсайты по работе со студентами</h2>
+          <ul class="small mb-0 text-muted">
+            {% for item in teacher_insights %}
+              <li>{{ item }}</li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if teacher_courses_stats %}
+    <div class="mb-4" data-aos="fade-up">
+      <div class="card metric-card">
+        <div class="card-body">
+          <h2 class="h5 mb-3">Завершенность по курсам преподавателя</h2>
+          <div class="chart-scroll-x">
+            <canvas
+              id="teacherCoursesChart"
+              height="120"
+              style="min-width: {{ (teacher_courses_labels|length * 40) | max(400) }}px;"
+            ></canvas>
+          </div>
+        </div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if schedule_rows %}
+    <h2 class="h5 mb-3">Расписание занятий</h2>
+    <div class="table-responsive acad-table-scroll acad-table-scroll-full" data-aos="fade-up">
+      <table class="table table-striped align-middle">
+        <thead>
+          <tr>
+            <th>Дата</th>
+            <th>Время</th>
+            <th>Курс</th>
+            <th>Урок</th>
+            <th>Группа</th>
+            <th>Локация</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in schedule_rows %}
+            <tr>
+              <td>{{ row.start_date }}</td>
+              <td>
+                {{ row.start_time }}
+                {% if row.end_time %}
+                  &ndash; {{ row.end_time }}
+                {% endif %}
+              </td>
+              <td>{{ row.course_title }}</td>
+              <td>{{ row.lesson_title or "—" }}</td>
+              <td>{{ row.group_name or "—" }}</td>
+              <td>{{ row.location or "—" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {% if schedule_dates %}
+      <h2 class="h5 mt-4 mb-2">Календарь по дням</h2>
+      <div class="row">
+        {% for date_key in schedule_dates %}
+          <div class="col-12 col-md-6 col-lg-4 mb-3">
+            <div class="card shadow-sm h-100">
+              <div class="card-header py-2 fw-semibold">
+                {{ date_key }}
+              </div>
+              <ul class="list-group list-group-flush small">
+                {% for row in schedule_by_date[date_key] %}
+                  <li class="list-group-item d-flex flex-column">
+                    <div class="d-flex justify-content-between">
+                      <span>{{ row.start_time }}{% if row.end_time %}–{{ row.end_time }}{% endif %}</span>
+                      {% if row.group_name %}
+                        <span class="text-muted">Группа: {{ row.group_name }}</span>
+                      {% endif %}
+                    </div>
+                    <div>{{ row.course_title }}</div>
+                    {% if row.lesson_title %}
+                      <div class="text-muted">{{ row.lesson_title }}</div>
+                    {% endif %}
+                    {% if row.location %}
+                      <div class="text-muted small">{{ row.location }}</div>
+                    {% endif %}
+                  </li>
+                {% endfor %}
+              </ul>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% if teacher_problem_courses %}
+    <h2 class="h5 mt-4 mb-2" id="problem-courses">
+      Проблемные курсы преподавателя
+    </h2>
+    <div class="table-responsive acad-table-scroll" data-aos="fade-up" data-aos-delay="60">
+      <table class="table table-striped align-middle mb-0">
+        <thead>
+          <tr>
+            <th>Курс</th>
+            <th class="text-center">Студентов</th>
+            <th class="text-center">Завершили</th>
+            <th class="text-center">Процент завершения</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in teacher_problem_courses %}
+            <tr>
+              <td>
+                <a href="/courses/{{ c.id }}?period=all">{{ c.title }}</a>
+              </td>
+              <td class="text-center">{{ c.total_students }}</td>
+              <td class="text-center">{{ c.completed_students }}</td>
+              <td class="text-center">{{ c.completion_rate }}%</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  {% endif %}
+  {% else %}
+    <p class="text-muted">В выбранном периоде пока нет занятий этого преподавателя.</p>
+  {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  <script data-page-script="teacher-detail">
+    (function () {
+      const canvas = document.getElementById("teacherCoursesChart");
+      if (!canvas || !window.Chart) return;
+
+      const labels = {{ teacher_courses_labels | tojson }};
+      const data = {{ teacher_courses_completion_rates | tojson }};
+
+      function getAxisColor(theme) {
+        const isDark = theme === "dark";
+        return isDark ? "#e5e7eb" : "#4b5563";
+      }
+
+      function getBarColor(theme) {
+        const isDark = theme === "dark";
+        return isDark ? "rgba(96, 165, 250, 0.85)" : "rgba(59, 130, 246, 0.8)";
+      }
+
+      function getGridColor(theme) {
+        const isDark = theme === "dark";
+        return isDark ? "rgba(148, 163, 184, 0.35)" : "rgba(148, 163, 184, 0.25)";
+      }
+
+      const initialTheme = document.body.classList.contains("theme-dark")
+        ? "dark"
+        : "light";
+
+      window.teacherCoursesChart = new Chart(canvas.getContext("2d"), {
+        type: "bar",
+        data: {
+          labels: labels,
+          datasets: [
+            {
+              label: "Completion rate, %",
+              data: data,
+              backgroundColor: getBarColor(initialTheme),
+              borderRadius: 4,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+          },
+          scales: {
+            y: {
+              beginAtZero: true,
+              max: 100,
+              ticks: {
+                color: getAxisColor(initialTheme),
+                callback: (value) => value + "%",
+              },
+              grid: {
+                color: getGridColor(initialTheme),
+                borderColor: getGridColor(initialTheme),
+              },
+            },
+            x: {
+              ticks: {
+                color: getAxisColor(initialTheme),
+              },
+              grid: {
+                color: getGridColor(initialTheme),
+                borderColor: getGridColor(initialTheme),
+              },
+            },
+          },
+        },
+      });
+
+      window.addEventListener("acad-theme-changed", (event) => {
+        const theme = (event.detail && event.detail.theme) || "light";
+        const axisColor = getAxisColor(theme);
+        const gridColor = getGridColor(theme);
+        if (window.teacherCoursesChart) {
+          window.teacherCoursesChart.data.datasets[0].backgroundColor =
+            getBarColor(theme);
+          if (window.teacherCoursesChart.options.scales?.y?.ticks) {
+            window.teacherCoursesChart.options.scales.y.ticks.color = axisColor;
+          }
+          if (window.teacherCoursesChart.options.scales?.x?.ticks) {
+            window.teacherCoursesChart.options.scales.x.ticks.color = axisColor;
+          }
+          if (window.teacherCoursesChart.options.scales?.y?.grid) {
+            window.teacherCoursesChart.options.scales.y.grid.color = gridColor;
+            window.teacherCoursesChart.options.scales.y.grid.borderColor = gridColor;
+          }
+          if (window.teacherCoursesChart.options.scales?.x?.grid) {
+            window.teacherCoursesChart.options.scales.x.grid.color = gridColor;
+            window.teacherCoursesChart.options.scales.x.grid.borderColor = gridColor;
+          }
+          window.teacherCoursesChart.update();
+        }
+      });
+    })();
+  </script>
+{% endblock %}

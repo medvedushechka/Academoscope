@@ -129,7 +129,13 @@
           >
             График удержания по урокам
           </h2>
-          <canvas id="dropoffChart" height="120"></canvas>
+          <div class="chart-scroll-x">
+            <canvas
+              id="dropoffChart"
+              height="120"
+              style="min-width: {{ (lesson_labels|length * 40) if (lesson_labels|length * 40) > 400 else 400 }}px;"
+            ></canvas>
+          </div>
         </div>
       </div>
     </div>

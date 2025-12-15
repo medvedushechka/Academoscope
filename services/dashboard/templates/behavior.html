@@ -36,7 +36,11 @@
             {% for l in popular_lessons %}
               {% if loop.index0 < 50 %}
                 <tr>
-                  <td>{{ l.course_title }}</td>
+                  <td>
+                    <a href="/courses/{{ l.course_id }}?period={{ period|default('all') }}">
+                      {{ l.course_title }}
+                    </a>
+                  </td>
                   <td>{{ l.lesson_title }}</td>
                   <td class="text-center">{{ l.started_students }}</td>
                   <td class="text-center">{{ l.completed_students }}</td>
@@ -67,7 +71,11 @@
             {% for l in difficult_lessons %}
               {% if loop.index0 < 50 %}
                 <tr>
-                  <td>{{ l.course_title }}</td>
+                  <td>
+                    <a href="/courses/{{ l.course_id }}?period={{ period|default('all') }}">
+                      {{ l.course_title }}
+                    </a>
+                  </td>
                   <td>{{ l.lesson_title }}</td>
                   <td class="text-center">{{ l.started_students }}</td>
                   <td class="text-center">{{ l.completed_students }}</td>

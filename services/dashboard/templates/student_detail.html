@@ -385,43 +385,79 @@
         if (!container || !studentAiContext) return;
 
         const originalHtml = container.innerHTML;
-        container.innerHTML = `
-          <div class="d-flex align-items-center justify-content-center py-2">
-            <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
-              <span class="visually-hidden">Loading...</span>
+
+        function renderStudentError(message) {
+          container.innerHTML =
+            '<p class="small text-muted mb-0">' +
+            message +
+            '<br /><span class="d-block mt-1">Вы можете нажать на иконку мозга в шапке, чтобы повторить запрос.</span></p>';
+        }
+
+        function loadStudentAiInsights() {
+          container.innerHTML = `
+            <div class="d-flex align-items-center justify-content-center py-2">
+              <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                <span class="visually-hidden">Loading...</span>
+              </div>
+              <span class="small text-muted">Загружаем прогноз для этого студента...</span>
             </div>
-            <span class="small text-muted">Загружаем прогноз для этого студента...</span>
-          </div>
-        `;
+          `;
 
-        fetch("/api/student-ai-insights", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Requested-With": "XMLHttpRequest",
-          },
-          body: JSON.stringify(studentAiContext),
-        })
-          .then(function (resp) { return resp.json(); })
-          .then(function (data) {
-            if (!data || !Array.isArray(data.items) || !data.items.length) {
-              container.innerHTML = originalHtml;
-              return;
-            }
-
-            const list = document.createElement("ul");
-            list.className = "small mb-0 text-muted";
-            data.items.forEach(function (item) {
-              const li = document.createElement("li");
-              li.textContent = item;
-              list.appendChild(li);
-            });
-            container.innerHTML = "";
-            container.appendChild(list);
+          fetch("/api/student-ai-insights", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Requested-With": "XMLHttpRequest",
+            },
+            body: JSON.stringify(studentAiContext),
           })
-          .catch(function () {
-            container.innerHTML = originalHtml;
-          });
+            .then(function (resp) {
+              return resp.json();
+            })
+            .then(function (data) {
+              if (!data || typeof data !== "object") {
+                renderStudentError("Не удалось загрузить прогноз для этого студента.");
+                return;
+              }
+
+              const status = data.status || "error";
+              const items = Array.isArray(data.items) ? data.items : [];
+
+              if (status === "ok" && items.length) {
+                const list = document.createElement("ul");
+                list.className = "small mb-0 text-muted";
+                items.forEach(function (item) {
+                  const li = document.createElement("li");
+                  li.textContent = item;
+                  list.appendChild(li);
+                });
+                container.innerHTML = "";
+                container.appendChild(list);
+                return;
+              }
+
+              if (status === "disabled") {
+                container.innerHTML =
+                  '<p class="small text-muted mb-0">AI-инсайты отключены в настройках.</p>';
+              } else if (status === "no_data" || status === "empty") {
+                container.innerHTML =
+                  '<p class="small text-muted mb-0">Пока недостаточно данных для прогноза для этого студента.</p>';
+              } else if (status === "error") {
+                renderStudentError("Не удалось получить ответ от AI для этого студента.");
+              } else {
+                renderStudentError("Не удалось загрузить прогноз для этого студента.");
+              }
+            })
+            .catch(function () {
+              renderStudentError("Ошибка при загрузке прогноза для этого студента.");
+            });
+        }
+
+        // Экспортируем функцию на window, чтобы можно было перезапускать запрос по клику на brain-иконку.
+        window.loadStudentAiInsights = loadStudentAiInsights;
+
+        // Первый запуск при загрузке страницы.
+        loadStudentAiInsights();
       })();
     })();
   </script>
